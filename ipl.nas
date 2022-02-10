@@ -1,5 +1,7 @@
 ; jos-ipl
-; TAB=4
+
+; 声明汇编常数
+CYLS EQU 10                 ; 读取的柱面数量
 
     ORG     0x7c00          ; 指明程序的装载地址
 
@@ -7,7 +9,7 @@
 
     JMP     entry
     DB      0x90
-    DB		"josIPL  "		; OEM引导扇区名称（8 字节）
+    DB		"jos     "		; OEM引导扇区名称（8 字节）
     DW		512				; 1个扇区大小（必须为 512）
     DB		1				; 簇大小（必须是一个扇区）
     DW		1				; FAT 预留扇区数（通常从第一个扇区开始）
@@ -16,8 +18,8 @@
     DW		2880			; 磁盘扇区总数（软盘2880），若为0则代表超过65535个扇区，需要使用第22行记录
     DB		0xf0			; 驱动器种类（1.44M软盘为0xf0）
     DW		9				; 每个 FAT 长度（必须为 9 个扇区）
-    DW		18				; 一个磁道上有多少个扇区（必须是 18）
-    DW		2				; 磁头数（必须为 2）
+    DW		18				; 一个磁道上有多少个扇区（软盘18个）
+    DW		2				; 磁头数（软盘2个）
     DD		0				; 隐藏的扇区数
     DD		2880			; 大容量扇区总数（如果16行为0则使用本行记录）
     DB		0               ; 中断0x13的设备号
@@ -38,32 +40,59 @@ entry:
 
 ; 读取硬盘
 
-    MOV     AX, 0x0820      
+    MOV     AX, 0x0820      ; 读取到0x8200处
     MOV     ES, AX          ; 附加段寄存器，用于稍后指定缓冲区
-    MOV     CH, 0           ; 柱面0
-    MOV     DH, 0           ; 磁头0
-    MOV     CL, 2           ; 扇区2（启动区在扇区1）
-    
+    ; 柱面0磁头0扇区1是启动区，已自动装载
+    MOV     CH, 0           ; 柱面0（0~79）
+    MOV     DH, 0           ; 磁头0（0~1）
+    MOV     CL, 2           ; 扇区2（1~18）
+readloop:
+    MOV     SI, 0           ; 记录失败次数
+retry:
     MOV     AH, 0x02        ; 0x02读盘 0x03写 0x04校验 0x0c寻道
     MOV     AL, 1           ; 处理1个扇区
-    MOV     BX, 0           ; 缓冲区内存地址
+    MOV     BX, 0           ; 缓冲区内存地址 ES:BX
     MOV     DL, 0x00        ; 驱动器号（A盘）
     INT     0x13            ; 调用磁盘BIOS
-    JC      error
+    JNC     next            ; 没出错的话
+    ADD     SI, 1           ; 失败计数+1
+    CMP     SI, 5           ; 判断失败次数是否达到5
+    JAE     error           ; 大于等于的话
+    MOV     AH, 0x00        ; 0x00复位
+    MOV     DL, 0x00        ; 驱动器号（A盘）
+    INT     0x13            ; 调用磁盘BIOS
+    JMP     retry
+next:
+    MOV     AX, ES          ; ES没法直接做加法
+    ADD     AX, 0x0020      ; AX加0x0020，输回ES相当于加0x200
+    MOV     ES, AX          ; 缓冲区地址后移了512字节
+    ; 扇区范围 1~18
+    ADD     CL, 1           ; 扇区+1（1扇区512字节）
+    CMP     CL, 18          ; 判断扇区是否达到18
+    JBE     readloop        ; 小于等于的话
+    ; 磁头范围 0~1 （正面0，反面1）
+    MOV     CL, 1           ; 读完一个磁头，扇区复位
+    ADD     DH, 1           ; 磁头加一
+    CMP     DH, 2
+    JB      readloop
+    ; 柱面范围 0~79
+    MOV     DH, 0           ; 读完一个柱面，磁头复位
+    ADD     CH, 1           ; CH是柱面
+    CMP     CH, CYLS        ; CYLS 是一个常数
+    JB      readloop
 
-; 读取完成后
+; 读取完毕，跳转执行
+    MOV     [0x0ff0], CH    ; 将CYLS值写入0x0ff0以供后续使用
+    JMP     0xc200          ; 跳转.sys(0x8200-0x0200+0x4200)
 
-fin:
-    HLT                     ; 让CPU停止，等待指令
-    JMP     fin             ; 无限循环
 error: 
-    MOV     SI, msg
+    MOV     SI, msg         ; 字串数据内存位置
 putloop:
-    MOV     AL,[SI]
+    MOV     AL,[SI]         ; 读取SI位置字节
     ADD     SI, 1           ; 给SI加1
-    CMP     AL, 0
-    JE      fin
-    MOV     AH, 0x0e        ; 显示文字固定标头
+    CMP     AL, 0           ; 判断字节是否为0
+    JE      fin             ; 是，代表数据结束，跳转
+    MOV     AH, 0x0e        ; 显示文字命令固定标头
     MOV     BX, 15          ; 指定字符颜色
     INT     0x10            ; 调用显卡BIOS
     JMP     putloop
@@ -72,8 +101,12 @@ msg:
     DB      "load error"
     DB      0x0a            ; 换行
     DB      0               ; 提供结束数据读取标志
-
+fin:
+    HLT                     ; 让CPU停止，等待指令
+    JMP     fin             ; 无限循环
+    
 ; 启动区内其他内容
 
+    ; RESB    0x1fe-($-$$)    ; 用0填充到0x001fe
     RESB    0x7dfe-$        ; 用0填充到0x7dfe
     DB      0x55, 0xaa      ; 启动区结束标志

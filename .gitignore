@@ -1,3 +1,11 @@
-/*.bin
-/*.img
-/*.vfd
+*.bin
+*.lst 
+*.gas
+*.map
+*.bim 
+*.hrb 
+*.obj 
+*.vfd 
+*.img 
+*.sys
+/bootpack.nas

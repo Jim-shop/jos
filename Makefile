@@ -1,10 +1,21 @@
 #SHELL := powershell.exe
 #.SHELLFLAGS := -Command
-MAKE 		= make
-NASM		= ./z_tools/nask.exe
-#NASM		= nasm
+TOOLPATH 	:= ./z_tools/
+INCPATH  	:= $(TOOLPATH)haribote/
+MAKE 		:= make
+NASM		:= $(TOOLPATH)nask.exe
+CC1 		:= $(TOOLPATH)cc1.exe -I$(INCPATH) -Os -Wall -quiet
+GAS2NASK	:= $(TOOLPATH)gas2nask.exe -a
+OBJ2BIM		:= $(TOOLPATH)obj2bim.exe
+BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
+RULEFILE    := $(TOOLPATH)jos.rul
+EDIMG    	:= $(TOOLPATH)edimg.exe
+IMGTOL      := $(TOOLPATH)imgtol.com
+# NASM		:= nasm
+IMG			:= jos.img
 
-.PHONY: default asm vfd clean run run_hyperv
+.PHONY: 
+	default clean img run
 
 default:
 	@$(MAKE) run
@@ -12,27 +23,50 @@ default:
 # 生成文件
 
 ipl.bin: ipl.nas Makefile
-	@$(NASM) ipl.nas ipl.bin
+	@$(NASM) ipl.nas ipl.bin ipl.lst
 
-ipl.vfd: ipl.bin Makefile
-	@./z_tools/edimg.exe imgin:./z_tools/fdimg0at.tek wbinimg src:ipl.bin len:512 from:0 to:0 imgout:ipl.vfd
+asmhead.bin: asmhead.nas Makefile
+	@$(NASM) asmhead.nas asmhead.bin asmhead.lst
+
+bootpack.gas: bootpack.c Makefile
+	@$(CC1) -o bootpack.gas bootpack.c
+
+bootpack.nas: bootpack.gas Makefile
+	@$(GAS2NASK) bootpack.gas bootpack.nas
+
+bootpack.obj: bootpack.nas Makefile
+	@$(NASM) bootpack.nas bootpack.obj bootpack.lst
+
+naskfunc.obj: naskfunc.nas Makefile
+	@$(NASM) naskfunc.nas naskfunc.obj naskfunc.lst
+
+bootpack.bim: bootpack.obj naskfunc.obj Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
+		bootpack.obj naskfunc.obj
+
+bootpack.hrb: bootpack.bim Makefile
+	@$(BIM2HRB) bootpack.bim bootpack.hrb 0
+
+jos.sys: asmhead.bin bootpack.hrb Makefile
+	@copy /B asmhead.bin+bootpack.hrb jos.sys
+
+$(IMG): ipl.bin jos.sys Makefile
+	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
+		wbinimg src:ipl.bin len:512 from:0 to:0 \
+		copy from:jos.sys to:@: \
+		imgout:$(IMG)
 
 # 指令
 
-asm:
-	@$(MAKE) ipl.bin
-
-vfd:
-	@$(MAKE) ipl.vfd
-
 clean:
-	@del *.bin *.vfd
+	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.vfd *.img *.sys
+	-@del bootpack.nas
 
-run: ipl.vfd Makefile
+img:
+	@make $(IMG)
+
+run: $(IMG) Makefile
 	@set SDL_VIDEODRIVER=windib
 	@set QEMU_AUDIO_DRV=none
 	@set QEMU_AUDIO_LOG_TO_MONITOR=0
-	@.\z_tools\qemu\qemu.exe -L .\z_tools\qemu -m 32 -localtime -std-vga -fda ipl.vfd
-
-run_hyperv: 
-	@echo 功能尚未完成……
+	@.\z_tools\qemu\qemu.exe -fda $(IMG) -L .\z_tools\qemu -m 32 -localtime -std-vga
