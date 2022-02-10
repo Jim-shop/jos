@@ -1,27 +1,34 @@
 #SHELL := powershell.exe
 #.SHELLFLAGS := -Command
+MAKE 		= make
+NASM		= ./z_tools/nask.exe
+#NASM		= nasm
 
-.PHONY: default asm vfd clean run_qemu run_hyperv
+.PHONY: default asm vfd clean run run_hyperv
 
 default:
-	@make run_qemu
+	@$(MAKE) run
+
+# 生成文件
 
 ipl.bin: ipl.nas Makefile
-	@./z_tools/nask.exe ipl.nas ipl.bin
+	@$(NASM) ipl.nas ipl.bin
 
 ipl.vfd: ipl.bin Makefile
 	@./z_tools/edimg.exe imgin:./z_tools/fdimg0at.tek wbinimg src:ipl.bin len:512 from:0 to:0 imgout:ipl.vfd
 
+# 指令
+
 asm:
-	@make ipl.bin
+	@$(MAKE) ipl.bin
 
 vfd:
-	@make ipl.vfd
+	@$(MAKE) ipl.vfd
 
 clean:
 	@del *.bin *.vfd
 
-run_qemu: ipl.vfd Makefile
+run: ipl.vfd Makefile
 	@set SDL_VIDEODRIVER=windib
 	@set QEMU_AUDIO_DRV=none
 	@set QEMU_AUDIO_LOG_TO_MONITOR=0

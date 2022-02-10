@@ -1,4 +1,4 @@
-; jos-1
+; jos-ipl
 ; TAB=4
 
     ORG     0x7c00          ; 指明程序的装载地址
@@ -31,12 +31,32 @@
 ; 程序主体
 
 entry:
-    MOV     AX, 0           ; 初始化寄存器
-    MOV     SS, AX
-    MOV     SP, 0x7c00
-    MOV     DS, AX
-    MOV     ES, AX
-    MOV     BH, 0
+    MOV     AX, 0           ; 用以初始化段寄存器
+    MOV     DS, AX          ; 数据段寄存器（默认）
+    MOV     SS, AX          ; 栈段寄存器
+    MOV     SP, 0x7c00      ; 栈指针寄存器
+
+; 读取硬盘
+
+    MOV     AX, 0x0820      
+    MOV     ES, AX          ; 附加段寄存器，用于稍后指定缓冲区
+    MOV     CH, 0           ; 柱面0
+    MOV     DH, 0           ; 磁头0
+    MOV     CL, 2           ; 扇区2（启动区在扇区1）
+    
+    MOV     AH, 0x02        ; 0x02读盘 0x03写 0x04校验 0x0c寻道
+    MOV     AL, 1           ; 处理1个扇区
+    MOV     BX, 0           ; 缓冲区内存地址
+    MOV     DL, 0x00        ; 驱动器号（A盘）
+    INT     0x13            ; 调用磁盘BIOS
+    JC      error
+
+; 读取完成后
+
+fin:
+    HLT                     ; 让CPU停止，等待指令
+    JMP     fin             ; 无限循环
+error: 
     MOV     SI, msg
 putloop:
     MOV     AL,[SI]
@@ -47,12 +67,9 @@ putloop:
     MOV     BX, 15          ; 指定字符颜色
     INT     0x10            ; 调用显卡BIOS
     JMP     putloop
-fin:
-    HLT                     ; 让CPU停止，等待指令
-    JMP     fin             ; 无限循环
 msg:
     DB      0x0a, 0x0a      ; 换行两次
-    DB      "hello, world"
+    DB      "load error"
     DB      0x0a            ; 换行
     DB      0               ; 提供结束数据读取标志
 
