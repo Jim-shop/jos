@@ -48,7 +48,7 @@ bootpack.hrb: bootpack.bim Makefile
 	@$(BIM2HRB) bootpack.bim bootpack.hrb 0
 
 jos.sys: asmhead.bin bootpack.hrb Makefile
-	@copy /B asmhead.bin+bootpack.hrb jos.sys
+	@copy /B asmhead.bin+bootpack.hrb jos.sys > nul
 
 $(IMG): ipl.bin jos.sys Makefile
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \

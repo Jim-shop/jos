@@ -10,7 +10,7 @@ SCRNY   EQU     0x0ff6      ; [WORD]分辨率y
 VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
 
     ORG     0xc200          ; 程序装载位置(0x8200-0x0200+0x4200)
-    MOV     AL, 0x13        ; VGA显卡，320x200x8位色
+    MOV     AL, 0x13        ; VGA显卡，320x200，8位调色板
     MOV     AH, 0x00        ; 设置显卡模式的标头
     INT     0x10
     ; 记录画面模式
