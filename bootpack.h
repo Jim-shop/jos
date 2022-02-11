@@ -17,7 +17,9 @@ struct BOOTINFO
 void io_hlt(void);
 void io_cli(void);
 void io_sti(void);
-void io_out8(int port, int data);
+void io_stihlt(void);
+int io_in8(const int port);
+void io_out8(const int port, const int data);
 int io_load_eflags(void);
 void io_store_eflags(const int eflags);
 void load_gdtr(const int limit, const int addr);
@@ -104,5 +106,21 @@ void inthandler2c(int *esp);
 #define PIC1_ICW2 0x00a1
 #define PIC1_ICW3 0x00a1
 #define PIC1_ICW4 0x00a1
+#define PORT_KEYDAT 0x0060
+
+
+// fifo.c
+struct FIFO8
+{
+    unsigned char *buf;
+    // 队尾，队头，缓冲区总大小，缓冲区空闲数，标志位
+    unsigned char end, start, size, free, flags;
+};
+void fifo8_init(struct FIFO8 *const fifo, const int size, unsigned char *const buf);
+int fifo8_put(struct FIFO8 *const fifo, unsigned char const data);
+int fifo8_get(struct FIFO8 *const fifo);
+int fifo8_status(struct FIFO8 *const fifo);
+#define FLAGS_OVERRUN 0x0001
+
 
 #endif

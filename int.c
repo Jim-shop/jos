@@ -46,26 +46,44 @@ void init_pic(void)
     return;
 }
 
+/*
+    中断处理完成后，使用指令
+    io_out8(PIC0_OCW2, 0x61);
+    通知PIC IRQ 已经受理完毕，
+    这样PIC就能继续时刻监视该IRQ中断是否发生。
+    没有通知的话，PIC就不再监视对应IRQ中断。
+
+    PIC0：中断的PIC
+    0x61：对于PIC0：0x60+IRQ号(0~7)
+          对于PIC1：0x60+IRQ号(8~15) - 8
+
+    PIC1 通知完后还要通知 PIC0 的 IRQ 2，
+    不然 PIC1 的中断会被 PIC0 忽略。
+*/
+
+struct FIFO8 keyfifo;
+
 void inthandler21(int *esp)
 {
     /*
     处理来自PS/2键盘的中断
     */
-    boxfill8(binfo->VRAM, binfo->SCRNX, black, 0, 0, 32 * 8 - 1, 15);
-    putfonts8_asc(binfo->VRAM, binfo->SCRNX, 0, 0, white, "INT 21 (IRQ-1) : PS/2 keyboard");
-    for (;;)
-        io_hlt();
+    io_out8(PIC0_OCW2, 0x61); // IRG 0x01中断受理完成（+0x60）
+    fifo8_put(&keyfifo, io_in8(PORT_KEYDAT));
+    return;
 }
+
+struct FIFO8 mousefifo;
 
 void inthandler2c(int *esp)
 {
     /*
     处理来自PS/2鼠标的中断
     */
-    boxfill8(binfo->VRAM, binfo->SCRNX, black, 0, 0, 32 * 8 - 1, 15);
-    putfonts8_asc(binfo->VRAM, binfo->SCRNX, 0, 0, white, "INT 2C (IRQ-12) : PS/2 mouse");
-    for (;;)
-        io_hlt();
+    io_out8(PIC1_OCW2, 0x64); // PIC1 IRQ 12
+    io_out8(PIC0_OCW2, 0x62); // PIC0 IRQ 2
+    fifo8_put(&mousefifo, io_in8(PORT_KEYDAT));
+    return;
 }
 
 void inthandler27(int *esp)
