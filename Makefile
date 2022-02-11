@@ -23,41 +23,46 @@ IMG			:= jos.img
 default:
 	@$(MAKE) run
 
-# 生成文件
+####### 生成文件
+
+### 启动区编译
 
 ipl.bin: ipl.nas Makefile
 	@$(NASM) ipl.nas ipl.bin ipl.lst
 
-asmhead.bin: asmhead.nas Makefile
-	@$(NASM) asmhead.nas asmhead.bin asmhead.lst
 
-bootpack.gas: bootpack.c Makefile
-	@$(CC1) -o bootpack.gas bootpack.c
+### 系统编译
 
-bootpack.nas: bootpack.gas Makefile
-	@$(GAS2NASK) bootpack.gas bootpack.nas
+# 所有.c文件编译到.obj
+%.gas: %.c Makefile
+	@$(CC1) -o $*.gas $*.c
+%.nas: %.gas Makefile
+	@$(GAS2NASK) $*.gas $*.nas
+%.obj: %.nas Makefile
+	@$(NASM) $*.nas $*.obj $*.lst
 
-bootpack.obj: bootpack.nas Makefile
-	@$(NASM) bootpack.nas bootpack.obj bootpack.lst
-
-naskfunc.obj: naskfunc.nas Makefile
-	@$(NASM) naskfunc.nas naskfunc.obj naskfunc.lst
-
+# 字库编译到.obj
 font.bin: font.txt Makefile
 	@$(MAKEFONT) font.txt font.bin
-
 font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
-bootpack.bim: bootpack.obj naskfunc.obj font.obj Makefile
-	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
-		bootpack.obj naskfunc.obj font.obj
-
+# 所需.obj编译到.hrb
+OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj naskfunc.obj font.obj
+bootpack.bim: $(OBJS_BOOTPACK) Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile
 	@$(BIM2HRB) bootpack.bim bootpack.hrb 0
 
+# 汇编部分编译到.bin
+asmhead.bin: asmhead.nas Makefile
+	@$(NASM) asmhead.nas asmhead.bin asmhead.lst
+
+# 融合.hrb .bin生成.sys系统文件
 jos.sys: asmhead.bin bootpack.hrb Makefile
 	@copy /B asmhead.bin+bootpack.hrb jos.sys > nul
+
+### 打包镜像
 
 $(IMG): ipl.bin jos.sys Makefile
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
@@ -65,7 +70,7 @@ $(IMG): ipl.bin jos.sys Makefile
 		copy from:jos.sys to:@: \
 		imgout:$(IMG)
 
-# 指令
+####### 指令
 
 clean:
 	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.vfd *.img *.sys
