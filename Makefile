@@ -2,11 +2,14 @@
 #.SHELLFLAGS := -Command
 TOOLPATH 	:= ./z_tools/
 INCPATH  	:= $(TOOLPATH)haribote/
+
 MAKE 		:= make
 NASM		:= $(TOOLPATH)nask.exe
 CC1 		:= $(TOOLPATH)cc1.exe -I$(INCPATH) -Os -Wall -quiet
 GAS2NASK	:= $(TOOLPATH)gas2nask.exe -a
 OBJ2BIM		:= $(TOOLPATH)obj2bim.exe
+MAKEFONT	:= $(TOOLPATH)makefont.exe
+BIN2OBJ		+= $(TOOLPATH)bin2obj.exe
 BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
 RULEFILE    := $(TOOLPATH)jos.rul
 EDIMG    	:= $(TOOLPATH)edimg.exe
@@ -40,9 +43,15 @@ bootpack.obj: bootpack.nas Makefile
 naskfunc.obj: naskfunc.nas Makefile
 	@$(NASM) naskfunc.nas naskfunc.obj naskfunc.lst
 
-bootpack.bim: bootpack.obj naskfunc.obj Makefile
+font.bin: font.txt Makefile
+	@$(MAKEFONT) font.txt font.bin
+
+font.obj: font.bin Makefile
+	@$(BIN2OBJ) font.bin font.obj _font
+
+bootpack.bim: bootpack.obj naskfunc.obj font.obj Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map \
-		bootpack.obj naskfunc.obj
+		bootpack.obj naskfunc.obj font.obj
 
 bootpack.hrb: bootpack.bim Makefile
 	@$(BIM2HRB) bootpack.bim bootpack.hrb 0

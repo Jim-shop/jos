@@ -4,12 +4,12 @@
 CYLS    EQU     0x0ff0      ; [BYTE]读入的柱面数
 LEDS    EQU     0x0ff1      ; [BYTE]键盘LED状态
 VMODE   EQU     0x0ff2      ; [BYTE]颜色位数
-                            ; 此之间内存有意留空
+                            ; 配合C语言结构体对齐，此处内存留空
 SCRNX   EQU     0x0ff4      ; [WORD]分辨率x
 SCRNY   EQU     0x0ff6      ; [WORD]分辨率y
 VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
 
-    ORG     0xc200          ; 程序装载位置(0x8200-0x0200+0x4200)
+    ORG     0xc200          ; 知会汇编程序 程序被装载在此内存地址
     MOV     AL, 0x13        ; VGA显卡，320x200，8位调色板
     MOV     AH, 0x00        ; 设置显卡模式的标头
     INT     0x10
