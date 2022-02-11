@@ -114,7 +114,7 @@ struct FIFO8
 {
     unsigned char *buf;
     // 队尾，队头，缓冲区总大小，缓冲区空闲数，标志位
-    unsigned char end, start, size, free, flags;
+    unsigned int end, start, size, free, flags;
 };
 void fifo8_init(struct FIFO8 *const fifo, const int size, unsigned char *const buf);
 int fifo8_put(struct FIFO8 *const fifo, unsigned char const data);

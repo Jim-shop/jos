@@ -5,6 +5,7 @@
 #include "bootpack.h"
 
 /*
+GDT 8字节记录内容：
     段基址base：（段的地址）
 为了与16位机器兼容，分为三段储存base_low[WORD], base_mid[BYTE], base_high[BYTE]
     段上限limit：（段有多少字节-1）
