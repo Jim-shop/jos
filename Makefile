@@ -14,7 +14,6 @@ BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
 RULEFILE    := $(TOOLPATH)jos.rul
 EDIMG    	:= $(TOOLPATH)edimg.exe
 IMGTOL      := $(TOOLPATH)imgtol.com
-# NASM		:= nasm
 IMG			:= jos.img
 
 .PHONY: 
@@ -48,7 +47,7 @@ font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
 # À˘–Ë.obj±‡“ÎµΩ.hrb
-OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj naskfunc.obj font.obj
+OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj naskfunc.obj font.obj
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile

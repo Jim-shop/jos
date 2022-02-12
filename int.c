@@ -61,31 +61,6 @@ void init_pic(void)
     不然 PIC1 的中断会被 PIC0 忽略。
 */
 
-struct FIFO8 keyfifo;
-
-void inthandler21(int *esp)
-{
-    /*
-    处理来自PS/2键盘的中断
-    */
-    io_out8(PIC0_OCW2, 0x61); // IRG 0x01中断受理完成（+0x60）
-    fifo8_put(&keyfifo, io_in8(PORT_KEYDAT));
-    return;
-}
-
-struct FIFO8 mousefifo;
-
-void inthandler2c(int *esp)
-{
-    /*
-    处理来自PS/2鼠标的中断
-    */
-    io_out8(PIC1_OCW2, 0x64); // PIC1 IRQ 12
-    io_out8(PIC0_OCW2, 0x62); // PIC0 IRQ 2
-    fifo8_put(&mousefifo, io_in8(PORT_KEYDAT));
-    return;
-}
-
 void inthandler27(int *esp)
 {
     /* PIC0中断的不完整策略

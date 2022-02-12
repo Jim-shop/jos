@@ -7,19 +7,43 @@
 struct BOOTINFO *const binfo = (struct BOOTINFO *)ADR_BOOTINFO;
 extern struct FIFO8 keyfifo, mousefifo;
 
-struct MOUSE_DEC
-{
-    /*
-    除了初始化时产生的0xfa，鼠标发送的数据是3字节1组
-    */
-    // phase: 0等待0xfa, 1,2,3表示等待第几字节
-    unsigned char buf[3], phase;
-    int x, y, btn;
+/*
+内存分布
+0x00000000 - 0x000fffff: 虽然在启动中会多次使用，但之后就变空。(1MB)
+0x00100000 - 0x00267fff: 用于保存软盘的内容。(1440KB)
+0x00268000 - 0x0026f7ff: 空 (30KB)
+0x0026f800 - 0x0026ffff: IDT (2KB)
+0x00270000 - 0x0027ffff: GDT (64KB)
+0x00280000 - 0x002fffff: bootpack.hrb (512KB)
+0x00300000 - 0x003fffff: 栈及其他 (1MB)
+0x00400000 -           : 空
+*/
+
+unsigned int memtest(unsigned const int start, unsigned const int end);
+unsigned int memtest_sub(unsigned int start, unsigned const int end);
+
+#define MEMMAN_FREES 4090 // 内存管理表最大信息量
+#define MEMMAN_ADDR 0x003c0000 // 内存管理表储存地址
+
+struct FREEINFO
+{ // 可用内存区的信息
+    unsigned int addr, size;
 };
 
-void init_keyboard(void);
-void enable_mouse(struct MOUSE_DEC *const mdec);
-int mouse_decode(struct MOUSE_DEC *const mdec, unsigned char const dat);
+struct MEMMAN
+{ // 内存管理表
+    // 可用信息数，可用信息总数，释放失败的内存大小总和，释放失败次数
+    int frees, maxfrees, lostsize, losts;
+    struct FREEINFO free[MEMMAN_FREES];
+};
+
+unsigned int memtest(unsigned const int start, unsigned const int end);
+unsigned int memtest_sub(unsigned int start, unsigned const int end);
+void memman_init(struct MEMMAN *const man);
+unsigned int memman_total(struct MEMMAN const *const man);
+unsigned int memman_alloc(struct MEMMAN *const man, unsigned const int size);
+int memman_free(struct MEMMAN *const man, unsigned int const addr, unsigned int const size);
+
 
 void HariMain(void)
 {
@@ -38,22 +62,37 @@ void HariMain(void)
     io_out8(PIC0_IMR, 0xf9); // 11111001 开放PIC1和键盘中断
     io_out8(PIC1_IMR, 0xef); // 11101111 开放鼠标中断
     // 键盘控制器初始化
-    init_keyboard(); // 鼠标初始化比较久，放在后面进行
+    init_keyboard();
+    // 鼠标本体初始化
+    struct MOUSE_DEC mdec;
+    enable_mouse(&mdec);
+
+    // 内存管理初始化
+    unsigned int memtotal = memtest(0x00400000, 0xbfffffff); //总内存
+    struct MEMMAN *const memman = (struct MEMMAN *const)MEMMAN_ADDR;
+    memman_init(memman);
+    memman_free(memman, 0x00001000, 0x0009e000);
+    memman_free(memman, 0x00400000, memtotal - 0x00400000);
 
     // 初始化界面
     init_palette();
     init_screen8(binfo->VRAM, binfo->SCRNX, binfo->SCRNY);
+
+    // 鼠标光标绘制
     char mcursor[256];
     init_mouse_cursor8(mcursor, lightdarkblue);
     int mx = (binfo->SCRNX - 16) / 2; //画面中心坐标
     int my = (binfo->SCRNY - 28 - 16) / 2;
     putblock8_8(binfo->VRAM, binfo->SCRNX, 16, 16, mx, my, mcursor, 16);
+
+    // 鼠标坐标绘制
     char s[40];
     sprintf(s, "(%3d, %3d)", mx, my);
     putfonts8_asc(binfo->VRAM, binfo->SCRNX, 0, 0, white, s);
 
-    struct MOUSE_DEC mdec;
-    enable_mouse(&mdec);
+    // 内存信息显示
+    sprintf(s, "memory %dMB free : %dKB", memtotal / (1024*1024), memman_total(memman) / 1024);
+    putfonts8_asc(binfo->VRAM, binfo->SCRNX, 0, 32, white, s);
 
     int i;
     for (;;)
@@ -83,19 +122,14 @@ void HariMain(void)
                 io_sti();
                 if (mouse_decode(&mdec, i))
                 {
+                    // 鼠标按键信息绘制
                     sprintf(s, "[lcr %4d %4d]", mdec.x, mdec.y);
                     if ((mdec.btn & 0x01) != 0)
-                    {
                         s[1] = 'L';
-                    }
                     if ((mdec.btn & 0x02) != 0)
-                    {
                         s[3] = 'R';
-                    }
                     if ((mdec.btn & 0x04) != 0)
-                    {
                         s[2] = 'C';
-                    }
                     boxfill8(binfo->VRAM, binfo->SCRNX, lightdarkblue, 32, 16, 32 + 15 * 8 - 1, 31);
                     putfonts8_asc(binfo->VRAM, binfo->SCRNX, 32, 16, white, s);
                     // 鼠标指针移动
@@ -120,107 +154,178 @@ void HariMain(void)
     }
 }
 
-#define PORT_KEYDAT 0x0060        // 键盘输入的数据（编码）
-#define PORT_KEYSTA 0x0064        // 键盘控制电路的状态输出设备号
-#define PORT_KEYCMD 0x0064        // 键盘控制电路的指令设置设备号
-#define KEYSTA_SEND_NOTREADY 0x02 // KBC状态输出数据的掩码，得到倒数第二位的值
-#define KEYCMD_WRITE_MODE 0x60    // 进入设定模式的指令
-#define KBC_MODE 0x47             // 鼠标模式
+#define EFLAGS_AC_BIT 0x00040000
+#define CR0_CACHE_DISABLE 0x60000000
 
-/*
-为了节省处理资源，鼠标控制电路默认不激活，不发送中断信号。
-
-因为鼠标控制电路默认不激活，
-所以鼠标本身干脆默认也不激活。
-
-所以要让鼠标有用，一是要激活鼠标控制电路，而是要激活鼠标本身。
-
-鼠标控制电路包含在键盘控制电路中，
-正常完成键盘控制电路的初始化，鼠标电路控制器也就激活了。
-*/
-
-void wait_KBC_sendready(void)
+unsigned int memtest(unsigned const int start, unsigned const int end)
 {
     /*
-    等待键盘控制电路(KeyBoard Controller)准备完毕
+    内存测试。
     */
-    for (;;)
-        if ((io_in8(PORT_KEYSTA) & KEYSTA_SEND_NOTREADY) == 0)
-            return;
+
+    /*
+        原理：
+    向内存中随便写入一个值，然后马上读取，如果内存连接正常，
+    则写入的值能够存在内存中，读取的值与写入的相同；
+    如果内存没连接，则读取不一定相同。
+    注意，CPU缓存会将写入内存的值暂存，这样无论写哪里的内存，
+    都能“正常”读出，影响内存测试，因此需要关闭缓存。
+    */
+    char flg486 = 0; // CPU是否为486以上
+    unsigned int eflg = io_load_eflags();
+    eflg |= EFLAGS_AC_BIT; // AC-bit := 1
+    io_store_eflags(eflg);
+    eflg = io_load_eflags();
+    if (eflg & EFLAGS_AC_BIT) // 如果是386，就没有AC标志位，即使设置AC=1，AC还会自动回到1
+        flg486 = 1;
+    eflg &= ~EFLAGS_AC_BIT; // AC-bit := 0
+    io_store_eflags(eflg);
+
+    // 486以上CPU有缓存，缓存影响接下来的内存测试，要将其关闭
+    if (flg486)
+        store_cr0(load_cr0() | CR0_CACHE_DISABLE);
+
+    // unsigned int i = asm_memtest_sub(start, end);
+    unsigned int i = memtest_sub(start, end);
+
+    if (flg486)
+        store_cr0(load_cr0() & ~CR0_CACHE_DISABLE); // 打开缓存
+
+    return i;
 }
 
-void init_keyboard(void)
+unsigned int memtest_sub(unsigned int start, unsigned const int end)
 {
     /*
-    初始化键盘控制电路（顺带激活鼠标控制电路）
+    内存测试核心过程。
     */
-    wait_KBC_sendready();
-    io_out8(PORT_KEYCMD, KEYCMD_WRITE_MODE);
-    wait_KBC_sendready();
-    io_out8(PORT_KEYDAT, KBC_MODE);
-    return;
-}
-
-#define KEYCMD_SENDTO_MOUSE 0xd4 // 向键盘控制电路发送这个数据，写往DAT的下一个数据就会自动转发给鼠标
-#define MOUSECMD_ENABLE 0xf4     // 激活鼠标指令
-
-void enable_mouse(struct MOUSE_DEC *const mdec)
-{
-    /*
-    激活鼠标本身。
-    */
-    wait_KBC_sendready();
-    io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
-    wait_KBC_sendready();
-    io_out8(PORT_KEYDAT, MOUSECMD_ENABLE);
-    // 顺利的话，执行完毕 PORT_KEYDAT 会返回 ACK(0xfa)。
-    // 但鼠标反应可能没那么快。
-    mdec->phase = 0; // 设置为等待0xfa的阶段
-    return;
-}
-
-int mouse_decode(struct MOUSE_DEC *const mdec, unsigned char const dat)
-{
-    /*
-        解码鼠标数据。
-        返回0表示还未读取完全。
-        返回1表示读取成功。
-        返回-1表示意外错误。
-    */
-    switch (mdec->phase)
+    unsigned int volatile *p = NULL;
+    unsigned int old;
+    unsigned const int pat0 = 0xaa55aa55, pat1 = 0x55aa55aa;
+    for (; start <= end; start += 0x1000)
     {
-    case 0:
-        // 等待 0xfa
-        if (dat == 0xfa)
-            mdec->phase = 1;
-        return 0;
-    case 1:
-        // 等待第一字节
-        if ((dat & 0xc8) == 0x08)
-        { // 如果第一字节正确
-            mdec->buf[0] = dat;
-            mdec->phase = 2;
+        p = (unsigned int volatile *)(start + 0xffc); // 检查4KB内存的最后4字节
+        old = *p;                                     // 保存以前的值
+        *p = pat0;                                    // 试写
+        *p ^= 0xffffffff;                             // 反转，防止内存缓存等
+        if (*p != pat1)
+        {
+        not_memory:
+            *p = old; // 恢复以前的值
+            break;
         }
-        return 0;
-    case 2:
-        // 等待第二字节
-        mdec->buf[1] = dat;
-        mdec->phase = 3;
-        return 0;
-    case 3:
-        // 等待第三字节
-        mdec->buf[2] = dat;
-        mdec->phase = 1;
-        mdec->btn = mdec->buf[0] & 0x07; // 取低三位
-        mdec->x = mdec->buf[1];
-        mdec->y = mdec->buf[2];
-        if ((mdec->buf[0] & 0x10) != 0)
-            mdec->x |= 0xffffff00; // int类型4个字节，防止读入内存中的垃圾
-        if ((mdec->buf[0] & 0x20) != 0)
-            mdec->y |= 0xffffff00;
-        mdec->y = -mdec->y; // 鼠标与屏幕y方向相反
-        return 1;
-    default:
-        return -1;
+        *p ^= 0xffffffff; // 再次反转，同样为了防止内存缓存
+        if (*p != pat0)
+            goto not_memory;
+        *p = old;
     }
+    return start;
+}
+
+void memman_init(struct MEMMAN *const man)
+{
+    /*
+    内存管理表初始化为空。
+    */
+    man->frees = 0;    /* 可用信息数目 */
+    man->maxfrees = 0; /* 用于观察可用状况：frees的最大值 */
+    man->lostsize = 0; /* 释放失败的内存的大小总和 */
+    man->losts = 0;    /* 释放失败次数 */
+    return;
+}
+
+unsigned int memman_total(struct MEMMAN const *const man)
+{
+    /*
+    报告空余内存大小的总和。
+    */
+    unsigned int i, t = 0;
+    for (i = 0; i < man->frees; i++)
+        t += man->free[i].size;
+    return t;
+}
+
+unsigned int memman_alloc(struct MEMMAN *const man, unsigned const int size)
+{
+    /*
+    分配内存。
+    返回非0值表示获取得到的内存空间首地址，
+    返回0表示未获得合适的内存空间。
+    */
+    unsigned int i, a;
+    for (i = 0; i < man->frees; i++)
+        if (man->free[i].size >= size)
+        {
+            a = man->free[i].addr;
+            man->free[i].addr += size;
+            man->free[i].size -= size;
+            if (man->free[i].size == 0)
+            {
+                man->frees--;
+                for (; i < man->frees; i++)
+                    man->free[i] = man->free[i + 1];
+            }
+        }
+    return 0;
+}
+
+int memman_free(struct MEMMAN *const man, unsigned int const addr, unsigned int const size)
+{
+    /*
+    释放内存空间。
+    返回0表示成功,，-1表示失败。
+    */
+
+    int i, j;
+    for (i = 0; i < man->frees; i++)
+        if (man->free[i].addr > addr)
+            break;
+    /*
+    free[]中的addr从小到大排序，所以现在有
+    free[i - 1].addr < addr < free[i].addr
+    */
+    if (i > 0)
+    { // addr前面存在可用内存块
+        if (man->free[i - 1].addr + man->free[i - 1].size == addr)
+        { // 与前面内存块恰好相连
+            man->free[i - 1].size += size;
+            if (i < man->frees)
+            { // addr后面也存在可用内存块
+                if (addr + size == man->free[i].addr)
+                { // 与后面的内存块也刚好相连
+                    man->free[i - 1].size += man->free[i].size;
+                    man->frees--;
+                    for (; i < man->frees; i++)
+                        man->free[i] = man->free[i + 1];
+                }
+            }
+            return 0;
+        }
+    }
+    // 不能与前面的内存空间合并
+    if (i < man->frees)
+    { // addr后面存在可用内存块
+        if (addr + size == man->free[i].addr)
+        { // 与后面的内存块刚好相连
+            man->free[i].addr = addr;
+            man->free[i].size += size;
+            return 0;
+        }
+    }
+    // 前后都不能恰好相连
+    if (man->frees < MEMMAN_FREES)
+    {
+        for (j = man->frees; j > i; i--)
+            man->free[j] = man->free[j - 1];
+        man->frees++;
+        if (man->maxfrees < man->frees)
+            man->maxfrees = man->frees;
+        man->free[i].addr = addr;
+        man->free[i].size = size;
+        return 0;
+    }
+    // 不能往后移动
+    man->losts++;
+    man->lostsize += size;
+    return -1;
 }

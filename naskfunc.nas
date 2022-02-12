@@ -16,7 +16,9 @@
 		GLOBAL	_io_out8, _io_out16, _io_out32
 		GLOBAL	_io_load_eflags, _io_store_eflags
 		GLOBAL	_load_gdtr, _load_idtr
+		GLOBAL	_load_cr0, _store_cr0
 		GLOBAL	_asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+		GLOBAL	_asm_memtest_sub ; 用C语言可以实现，此处只留作备份
 		EXTERN	_inthandler21, _inthandler27, _inthandler2c
 
 
@@ -26,6 +28,7 @@
 
 ; [ESP+4]第一个参数，[ESP+8]第二个参数，etc
 ; 汇编可自由使用的寄存器 EAX, ECX, EDX
+; EAX 作为 int 返回值
 ; IN 	EAX, DX		; 从DX所指的端口取数据进寄存器EAX
 ; OUT 	DX, AL		; 向DX所指的端口发送AL中的数据
 
@@ -87,7 +90,7 @@ _io_load_eflags:	; int io_load_eflags(void);
 		RET
 
 _io_store_eflags:	; void io_store_eflags(int eflags);
-		MOV		EAX,[ESP+4]
+		MOV		EAX, [ESP+4]
 		PUSH	EAX
 		POPFD					; 出栈到EFLAGS
 		RET
@@ -103,15 +106,24 @@ _load_gdtr:		; void load_gdtr(int limit, int addr);
 		; 想要让 LGDT 读到 [FF FF 00 00 27 00]的形式
 		; 则可以用16位寄存器把[ESP+4]处两个字节拷到[ESP+6]处两个字节上
 		; 然后让 LGDT 读[ESP+6]处的6个字节
-		MOV		AX,[ESP+4]		
-		MOV		[ESP+6],AX
+		MOV		AX, [ESP+4]		
+		MOV		[ESP+6], AX
 		LGDT	[ESP+6]			
 		RET
 
 _load_idtr:		; void load_idtr(int limit, int addr);
-		MOV		AX,[ESP+4]	
-		MOV		[ESP+6],AX
+		MOV		AX, [ESP+4]	
+		MOV		[ESP+6], AX
 		LIDT	[ESP+6]			; 与GDT表设置类似，用LIDT设置IDT表
+		RET
+
+_load_cr0:		; int load_cr0(void);
+		MOV		EAX, CR0
+		RET
+
+_store_cr0:		; void store_cr0(int cr0);
+		MOV		EAX, [ESP+4]
+		MOV		CR0, EAX
 		RET
 
 _asm_inthandler21:
@@ -172,3 +184,37 @@ _asm_inthandler2c:
 		POP		DS
 		POP		ES
 		IRETD
+
+; 以下三个函数已用C语言实现，此处仅留作备份
+_asm_memtest_sub:	; unsigned int asm_memtest_sub(unsigned int start, unsigned int end)
+		PUSH	EDI						; （由于还要使用EBX, ESI, EDI）
+		PUSH	ESI
+		PUSH	EBX
+		MOV		ESI, 0xaa55aa55			; pat0 = 0xaa55aa55;
+		MOV		EDI, 0x55aa55aa			; pat1 = 0x55aa55aa;
+		MOV		EAX, [ESP+12+4]			; i = start; // PUSH一次ESP-4
+mts_loop:
+		MOV		EBX, EAX
+		ADD		EBX, 0xffc				; p = i + 0xffc;
+		MOV		EDX, [EBX]				; old = *p;
+		MOV		[EBX], ESI				; *p = pat0;
+		XOR		DWORD [EBX],0xffffffff	; *p ^= 0xffffffff;
+		CMP		EDI, [EBX]				; if (*p != pat1) goto fin;
+		JNE		mts_fin
+		XOR		DWORD [EBX],0xffffffff	; *p ^= 0xffffffff;
+		CMP		ESI, [EBX]				; if (*p != pat0) goto fin;
+		JNE		mts_fin
+		MOV		[EBX], EDX				; *p = old;
+		ADD		EAX, 0x1000				; i += 0x1000;
+		CMP		EAX, [ESP+12+8]			; if (i <= end) goto mts_loop;
+		JBE		mts_loop
+		POP		EBX
+		POP		ESI
+		POP		EDI
+		RET
+mts_fin:
+		MOV		[EBX], EDX				; *p = old;
+		POP		EBX
+		POP		ESI
+		POP		EDI
+		RET

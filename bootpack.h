@@ -24,9 +24,12 @@ int io_load_eflags(void);
 void io_store_eflags(const int eflags);
 void load_gdtr(const int limit, const int addr);
 void load_idtr(const int limit, const int addr);
+int load_cr0(void);
+void store_cr0(const int cr0);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
 void asm_inthandler2c(void);
+unsigned int asm_memtest_sub(unsigned int start, unsigned int end); //已用C语言实现，仅做备份
 
 // font 提供的字库
 extern const char font[4096];
@@ -91,9 +94,7 @@ void set_gatedesc(struct GATE_DESCRIPTOR *const gd, const int offset, const int 
 
 // int.c
 void init_pic(void);
-void inthandler21(int *esp);
 void inthandler27(int *esp);
-void inthandler2c(int *esp);
 #define PIC0_ICW1 0x0020
 #define PIC0_OCW2 0x0020
 #define PIC0_IMR 0x0021 // 中断屏蔽寄存器，8位对应8路IRQ信号，哪位为1屏蔽哪位
@@ -108,7 +109,6 @@ void inthandler2c(int *esp);
 #define PIC1_ICW4 0x00a1
 #define PORT_KEYDAT 0x0060
 
-
 // fifo.c
 struct FIFO8
 {
@@ -122,5 +122,31 @@ int fifo8_get(struct FIFO8 *const fifo);
 int fifo8_status(struct FIFO8 *const fifo);
 #define FLAGS_OVERRUN 0x0001
 
+// keyboard.c
+void wait_KBC_sendready(void);
+void init_keyboard(void);
+void inthandler21(int *esp);
+#define PORT_KEYDAT 0x0060        // 键盘输入的数据（编码）
+#define PORT_KEYSTA 0x0064        // 键盘控制电路的状态输出设备号
+#define PORT_KEYCMD 0x0064        // 键盘控制电路的指令设置设备号
+#define KEYSTA_SEND_NOTREADY 0x02 // KBC状态输出数据的掩码，得到倒数第二位的值
+#define KEYCMD_WRITE_MODE 0x60    // 进入设定模式的指令
+#define KBC_MODE 0x47             // 鼠标模式
+
+// mouse.c
+struct MOUSE_DEC
+{
+    /*
+    除了初始化时产生的0xfa，鼠标发送的数据是3字节1组
+    */
+    // phase: 0等待0xfa, 1,2,3表示等待第几字节
+    unsigned char buf[3], phase;
+    int x, y, btn;
+};
+void enable_mouse(struct MOUSE_DEC *const mdec);
+int mouse_decode(struct MOUSE_DEC *const mdec, unsigned char const dat);
+void inthandler2c(int *esp);
+#define KEYCMD_SENDTO_MOUSE 0xd4 // 向键盘控制电路发送这个数据，写往DAT的下一个数据就会自动转发给鼠标
+#define MOUSECMD_ENABLE 0xf4     // 激活鼠标指令
 
 #endif
