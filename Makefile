@@ -1,6 +1,7 @@
 #SHELL := powershell.exe
 #.SHELLFLAGS := -Command
 TOOLPATH 	:= ./z_tools/
+TOOLKIT		:= ./toolkit
 INCPATH  	:= $(TOOLPATH)haribote/
 
 MAKE 		:= make
@@ -11,7 +12,7 @@ OBJ2BIM		:= $(TOOLPATH)obj2bim.exe
 MAKEFONT	:= $(TOOLPATH)makefont.exe
 BIN2OBJ		+= $(TOOLPATH)bin2obj.exe
 BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
-RULEFILE    := $(TOOLPATH)jos.rul
+RULEFILE    := $(TOOLKIT)/jos.rul
 EDIMG    	:= $(TOOLPATH)edimg.exe
 IMGTOL      := $(TOOLPATH)imgtol.com
 IMG			:= jos.img
@@ -47,7 +48,7 @@ font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
 # À˘–Ë.obj±‡“ÎµΩ.hrb
-OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj naskfunc.obj font.obj
+OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj naskfunc.obj font.obj
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile

@@ -149,4 +149,57 @@ void inthandler2c(int *esp);
 #define KEYCMD_SENDTO_MOUSE 0xd4 // 向键盘控制电路发送这个数据，写往DAT的下一个数据就会自动转发给鼠标
 #define MOUSECMD_ENABLE 0xf4     // 激活鼠标指令
 
+// memory.c
+#define EFLAGS_AC_BIT 0x00040000
+#define CR0_CACHE_DISABLE 0x60000000
+#define MEMMAN_FREES 4090      // 内存管理表最大信息量
+#define MEMMAN_ADDR 0x003c0000 // 内存管理表储存地址
+struct FREEINFO
+{ // 可用内存区的信息
+    unsigned int addr, size;
+};
+struct MEMMAN
+{ // 内存管理表
+    // 可用信息数，可用信息总数，释放失败的内存大小总和，释放失败次数
+    int frees, maxfrees, lostsize, losts;
+    struct FREEINFO free[MEMMAN_FREES];
+};
+unsigned int memtest(unsigned const int start, unsigned const int end);
+unsigned int memtest_sub(unsigned int start, unsigned const int end);
+void memman_init(struct MEMMAN *const man);
+unsigned int memman_total(struct MEMMAN const *const man);
+unsigned int memman_alloc(struct MEMMAN *const man, unsigned const int size);
+int memman_free(struct MEMMAN *const man, unsigned int const addr, unsigned int const size);
+unsigned int memman_alloc_4k(struct MEMMAN *const man, unsigned int const size);
+int memman_free_4k(struct MEMMAN *const man, unsigned int const addr, unsigned int const size);
+
+// sheet.c
+#define MAX_SHEETS 256 // 最大图层数
+struct SHEET
+{                       // 图层信息
+    unsigned char *buf; // 内容地址
+    int bxsize, bysize; // 图层大小
+    int vx0, vy0;       // 图层左上角的屏幕坐标
+    int col_inv;        // 透明色色号
+    int height;         // 高度
+    int flags;          // 其他设定
+};
+struct SHTCTL
+{ // 图层管理
+    unsigned char *vram;
+    int xsize, ysize;                 // VRAM尺寸
+    int top;                          // 最上面图层的高度
+    struct SHEET *sheets[MAX_SHEETS]; // 按高度升序排序的各图层信息的地址
+    struct SHEET sheets0[MAX_SHEETS]; // 存放各图层信息
+};
+#define SHEET_USE 1 // flag: 正在使用的SHEET
+struct SHTCTL *shtctl_init(struct MEMMAN *const memman, unsigned char *const vram, int xsize, int ysize);
+struct SHEET *sheet_alloc(struct SHTCTL *const ctl);
+void sheet_setbuf(struct SHEET *const sht, unsigned char *const buf, int const xsize, int const ysize, int const col_inv);
+void sheet_updown(struct SHTCTL *const ctl, struct SHEET *const sht, int height);
+void sheet_refresh(struct SHTCTL const *const ctl, struct SHEET const *const sht, const int bx0, const int by0, const int bx1, const int by1);
+void sheet_refreshsub(struct SHTCTL const *const ctl, const int vx0, const int vy0, const int vx1, const int vy1);
+void sheet_slide(struct SHTCTL const *const ctl, struct SHEET *const sht, int const vx0, int const vy0);
+void sheet_free(struct SHTCTL *const ctl, struct SHEET *const sht);
+
 #endif
