@@ -47,23 +47,23 @@ void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int 
 void init_mouse_cursor8(char *const mouse, const char bc);
 void putblock8_8(unsigned char *const vram, const int vxsize, const int pxsize, const int pysize, const int px0, const int py0, char const *const buf, const int bxsize);
 enum COLOR
-{ // 默认调色板颜色
-    black = 0,
-    red = 1,
-    green = 2,
-    yellow = 3,
-    blue = 4,
-    purple = 5,
-    lightblue = 6,
-    white = 7,
-    gray = 8,
-    darkred = 9,
-    darkgreen = 10,
-    darkyellow = 11,
-    darkblue = 12,
-    darkpurple = 13,
-    lightdarkblue = 14,
-    darkgray = 15
+{                       // 默认调色板颜色
+    black = 0,          // 000000 黑
+    red = 1,            // ff0000 亮红
+    green = 2,          // 00ff00 亮绿
+    yellow = 3,         // ffff00 亮黄
+    blue = 4,           // 0000ff 亮蓝
+    purple = 5,         // ff00ff 亮紫
+    lightblue = 6,      // 00ffff 浅亮蓝
+    white = 7,          // ffffff 白
+    gray = 8,           // c6c6c6 亮灰
+    darkred = 9,        // 840000 暗红
+    darkgreen = 10,     // 008400 暗绿
+    darkyellow = 11,    // 848400 暗黄
+    darkblue = 12,      // 000084 暗青
+    darkpurple = 13,    // 840084 暗紫
+    lightdarkblue = 14, // 008484 浅暗蓝
+    darkgray = 15       // 848484 暗灰
 };
 
 // dsctbl.c
@@ -176,7 +176,8 @@ int memman_free_4k(struct MEMMAN *const man, unsigned int const addr, unsigned i
 // sheet.c
 #define MAX_SHEETS 256 // 最大图层数
 struct SHEET
-{                       // 图层信息
+{ // 图层信息
+    struct SHTCTL *ctl;
     unsigned char *buf; // 内容地址
     int bxsize, bysize; // 图层大小
     int vx0, vy0;       // 图层左上角的屏幕坐标
@@ -185,8 +186,8 @@ struct SHEET
     int flags;          // 其他设定
 };
 struct SHTCTL
-{ // 图层管理
-    unsigned char *vram;
+{                                     // 图层管理
+    unsigned char *vram, *map;        // map与vram同大 用来表示画面上的每个点分别是哪个图层的像素
     int xsize, ysize;                 // VRAM尺寸
     int top;                          // 最上面图层的高度
     struct SHEET *sheets[MAX_SHEETS]; // 按高度升序排序的各图层信息的地址
@@ -196,10 +197,11 @@ struct SHTCTL
 struct SHTCTL *shtctl_init(struct MEMMAN *const memman, unsigned char *const vram, int xsize, int ysize);
 struct SHEET *sheet_alloc(struct SHTCTL *const ctl);
 void sheet_setbuf(struct SHEET *const sht, unsigned char *const buf, int const xsize, int const ysize, int const col_inv);
-void sheet_updown(struct SHTCTL *const ctl, struct SHEET *const sht, int height);
-void sheet_refresh(struct SHTCTL const *const ctl, struct SHEET const *const sht, const int bx0, const int by0, const int bx1, const int by1);
-void sheet_refreshsub(struct SHTCTL const *const ctl, const int vx0, const int vy0, const int vx1, const int vy1);
-void sheet_slide(struct SHTCTL const *const ctl, struct SHEET *const sht, int const vx0, int const vy0);
-void sheet_free(struct SHTCTL *const ctl, struct SHEET *const sht);
+void sheet_updown(struct SHEET *const sht, int height);
+void sheet_refreshmap(struct SHTCTL *const ctl, int vx0, int vy0, int vx1, int vy1, const int h0);
+void sheet_refreshsub(struct SHTCTL const *const ctl, int vx0, int vy0, int vx1, int vy1, const int h0, const int h1);
+void sheet_refresh(struct SHEET const *const sht, const int bx0, const int by0, const int bx1, const int by1);
+void sheet_slide(struct SHEET *const sht, int const vx0, int const vy0);
+void sheet_free(struct SHEET *const sht);
 
 #endif

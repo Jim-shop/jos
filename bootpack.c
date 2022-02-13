@@ -6,6 +6,8 @@
 
 struct BOOTINFO *const binfo = (struct BOOTINFO *)ADR_BOOTINFO;
 
+void make_window8(unsigned char *buf, int xsize, int ysize, char *title);
+
 void Main(void)
 {
     // 初始化中断
@@ -41,23 +43,30 @@ void Main(void)
     // 图层管理器
     struct SHTCTL *shtctl = shtctl_init(memman, binfo->VRAM, binfo->SCRNX, binfo->SCRNY);
     // 背景图层
-    struct SHEET *sht_back = sheet_alloc(shtctl); // 背景
+    struct SHEET *sht_back = sheet_alloc(shtctl);
     unsigned char *buf_back = (unsigned char *)memman_alloc_4k(memman, binfo->SCRNX * binfo->SCRNY);
-    sheet_setbuf(sht_back, buf_back, binfo->SCRNX, binfo->SCRNY, -1);
+    sheet_setbuf(sht_back, buf_back, binfo->SCRNX, binfo->SCRNY, -1); // 没有透明色
     init_screen8(buf_back, binfo->SCRNX, binfo->SCRNY);
-    sheet_slide(shtctl, sht_back, 0, 0); // 此时图层还不可见，不会绘图
+    sheet_slide(sht_back, 0, 0); // 此时图层还不可见，不会绘图
+    // 窗口图层
+    int count = 0;
+    struct SHEET *sht_win = sheet_alloc(shtctl);
+    unsigned char *buf_win = (unsigned char *)memman_alloc_4k(memman, 160 * 52);
+    sheet_setbuf(sht_win, buf_win, 160, 52, -1); // 没有透明色
+    make_window8(buf_win, 160, 52, "counter");
+    sheet_slide(sht_win, 80, 72);
     // 鼠标光标图层
-    struct SHEET *sht_mouse = sheet_alloc(shtctl); // 鼠标光标
+    struct SHEET *sht_mouse = sheet_alloc(shtctl);
     unsigned char buf_mouse[256];
     sheet_setbuf(sht_mouse, buf_mouse, 16, 16, 99);
     init_mouse_cursor8(buf_mouse, 99);
     int mx = (binfo->SCRNX - 16) / 2; //画面中心坐标
     int my = (binfo->SCRNY - 28 - 16) / 2;
-    sheet_slide(shtctl, sht_mouse, mx, my); // 此时图层还不可见，不会绘图
+    sheet_slide(sht_mouse, mx, my); // 此时图层还不可见，不会绘图
     // 设定图层高度
-    sheet_updown(shtctl, sht_back, 0);
-    sheet_updown(shtctl, sht_mouse, 1);
-    // putblock8_8(binfo->VRAM, binfo->SCRNX, 16, 16, mx, my, mcursor, 16);
+    sheet_updown(sht_back, 0);
+    sheet_updown(sht_win, 1);
+    sheet_updown(sht_mouse, 2);
 
     // 鼠标坐标绘制
     char s[40];
@@ -66,11 +75,17 @@ void Main(void)
     // 内存信息显示
     sprintf(s, "memory %dMB free : %dKB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
     putfonts8_asc(buf_back, binfo->SCRNX, 0, 32, white, s);
-    sheet_refresh(shtctl, sht_back, 0, 0, binfo->SCRNX, 48);
+    sheet_refresh(sht_back, 0, 0, binfo->SCRNX, 48);
 
     int i;
     for (;;)
     {
+        count++;
+        sprintf(s, "%010d", count);
+        boxfill8(buf_win, 160, gray, 40, 28, 119, 43);
+        putfonts8_asc(buf_win, 160, 40, 28, black, s);
+        sheet_refresh(sht_win, 40, 28, 120, 44);
+
         io_cli(); // 先屏蔽中断
         if (fifo8_status(&keyfifo) + fifo8_status(&mousefifo) == 0)
             /*
@@ -79,7 +94,8 @@ void Main(void)
             如果分开用sti和HLT，中间发生中断的话，
             CPU会进入HLT状态不处理中断。
             */
-            io_stihlt(); // 恢复接受中断，待机
+            //io_stihlt(); // 恢复接受中断，待机
+            io_sti(); // 不待机，提高性能
         else
         {
             if (fifo8_status(&keyfifo))
@@ -89,7 +105,7 @@ void Main(void)
                 sprintf(s, "%02X", i);
                 boxfill8(buf_back, binfo->SCRNX, lightdarkblue, 0, 16, 15, 31);
                 putfonts8_asc(buf_back, binfo->SCRNX, 0, 16, white, s);
-                sheet_refresh(shtctl, sht_back, 0, 16, 16, 32);
+                sheet_refresh(sht_back, 0, 16, 16, 32);
             }
             else if (fifo8_status(&mousefifo))
             {
@@ -107,7 +123,7 @@ void Main(void)
                         s[2] = 'C';
                     boxfill8(buf_back, binfo->SCRNX, lightdarkblue, 32, 16, 32 + 15 * 8 - 1, 31);
                     putfonts8_asc(buf_back, binfo->SCRNX, 32, 16, white, s);
-                    sheet_refresh(shtctl, sht_back, 32, 16, 32+15*8, 32);
+                    sheet_refresh(sht_back, 32, 16, 32 + 15 * 8, 32);
                     // 鼠标指针移动
                     mx += mdec.x;
                     my += mdec.y;
@@ -115,17 +131,69 @@ void Main(void)
                         mx = 0;
                     if (my < 0)
                         my = 0;
-                    if (mx > binfo->SCRNX - 16)
-                        mx = binfo->SCRNX - 16;
-                    if (my > binfo->SCRNY - 16)
-                        my = binfo->SCRNY - 16;
+                    if (mx > binfo->SCRNX - 1)
+                        mx = binfo->SCRNX - 1;
+                    if (my > binfo->SCRNY - 1)
+                        my = binfo->SCRNY - 1;
                     sprintf(s, "(%3d, %3d)", mx, my);
                     boxfill8(buf_back, binfo->SCRNX, lightdarkblue, 0, 0, 79, 15);
                     putfonts8_asc(buf_back, binfo->SCRNX, 0, 0, white, s);
-                    sheet_refresh(shtctl, sht_back, 0, 0, 80, 16);
-                    sheet_slide(shtctl, sht_mouse, mx, my);
+                    sheet_refresh(sht_back, 0, 0, 80, 16);
+                    sheet_slide(sht_mouse, mx, my);
                 }
             }
         }
     }
+}
+
+void make_window8(unsigned char *const buf, const int xsize, const int ysize, char *const title)
+{
+    /*
+    制造窗口的buf
+    */
+    static char closebtn[14][16] =
+        {
+            "OOOOOOOOOOOOOOO@",
+            "OQQQQQQQQQQQQQ$@",
+            "OQQQQQQQQQQQQQ$@",
+            "OQQQ@@QQQQ@@QQ$@",
+            "OQQQQ@@QQ@@QQQ$@",
+            "OQQQQQ@@@@QQQQ$@",
+            "OQQQQQQ@@QQQQQ$@",
+            "OQQQQQ@@@@QQQQ$@",
+            "OQQQQ@@QQ@@QQQ$@",
+            "OQQQ@@QQQQ@@QQ$@",
+            "OQQQQQQQQQQQQQ$@",
+            "OQQQQQQQQQQQQQ$@",
+            "O$$$$$$$$$$$$$$@",
+            "@@@@@@@@@@@@@@@@",
+        };
+    int x, y;
+    char c;
+    boxfill8(buf, xsize, gray, 0, 0, xsize - 1, 0);
+    boxfill8(buf, xsize, white, 1, 1, xsize - 2, 1);
+    boxfill8(buf, xsize, gray, 0, 0, 0, ysize - 1);
+    boxfill8(buf, xsize, white, 1, 1, 1, ysize - 2);
+    boxfill8(buf, xsize, darkgray, xsize - 2, 1, xsize - 2, ysize - 2);
+    boxfill8(buf, xsize, black, xsize - 1, 0, xsize - 1, ysize - 1);
+    boxfill8(buf, xsize, gray, 2, 2, xsize - 3, ysize - 3);
+    boxfill8(buf, xsize, darkblue, 3, 3, xsize - 4, 20);
+    boxfill8(buf, xsize, darkgray, 1, ysize - 2, xsize - 2, ysize - 2);
+    boxfill8(buf, xsize, black, 0, ysize - 1, xsize - 1, ysize - 1);
+    putfonts8_asc(buf, xsize, 24, 4, white, title);
+    for (y = 0; y < 14; y++)
+        for (x = 0; x < 16; x++)
+        {
+            c = closebtn[y][x];
+            if (c == '@')
+                c = black;
+            else if (c == '$')
+                c = darkgray;
+            else if (c == 'Q')
+                c = gray;
+            else
+                c = white;
+            buf[(5 + y) * xsize + (xsize - 21 + x)] = c;
+        }
+    return;
 }
