@@ -12,6 +12,7 @@ struct BOOTINFO
     unsigned short SCRNX, SCRNY; // 屏幕分辨率
     unsigned char *VRAM;         // 图像缓冲区开始地址
 };
+extern struct BOOTINFO *const binfo;
 
 // naskfunc 提供的函数
 void io_hlt(void);
@@ -26,6 +27,7 @@ void load_gdtr(const int limit, const int addr);
 void load_idtr(const int limit, const int addr);
 int load_cr0(void);
 void store_cr0(const int cr0);
+void asm_inthandler20(void);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
 void asm_inthandler2c(void);
@@ -203,5 +205,33 @@ void sheet_refreshsub(struct SHTCTL const *const ctl, int vx0, int vy0, int vx1,
 void sheet_refresh(struct SHEET const *const sht, const int bx0, const int by0, const int bx1, const int by1);
 void sheet_slide(struct SHEET *const sht, int const vx0, int const vy0);
 void sheet_free(struct SHEET *const sht);
+
+// timer.c
+#define MAX_TIMER 500
+struct TIMER
+{
+    unsigned int timeout, flags; // timeout: 设定时刻（绝对时间）
+    struct FIFO8 *fifo;          // 一旦达到timeout，就往FIFO内发送data的数据
+    unsigned char data;
+};
+struct TIMERCTL
+{
+    unsigned int count;              // 计时
+    unsigned int next;               // 下一个timer的时间点
+    unsigned int using;              // 现在有多少计时器正在使用中
+    struct TIMER *timers[MAX_TIMER]; // 按timeout升序排列
+    struct TIMER timers0[MAX_TIMER];
+};
+extern struct TIMERCTL timerctl;
+#define PIT_CTRL 0x0043     // PIT控制设备号
+#define PIT_CNT0 0x0040     // PIT中断频率设置设备号
+#define TIMER_FLAGS_ALLOC 1 // 状态：已配置
+#define TIMER_FLAGS_USING 2 // 状态：运行中
+void init_pit(void);
+void inthandler20(int *esp);
+struct TIMER *timer_alloc(void);
+void timer_free(struct TIMER *const timer);
+void timer_init(struct TIMER *const timer, struct FIFO8 *const fifo, unsigned char const data);
+void timer_settime(struct TIMER *const timer, unsigned int const timeout);
 
 #endif

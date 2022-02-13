@@ -144,7 +144,7 @@ void sheet_refresh(struct SHEET const *const sht, const int bx0, const int by0, 
 {
     /*
     刷新指定图层的指定区域。
-    指定的两个坐标是相对于图层原点的坐标。
+    指定的两个坐标（超尾）是相对于图层原点的坐标。
     */
     if (sht->height >= 0) // 如果图层可见，就重画这一层的对应区域（此函数为了性能，没有考虑透明的情况）
         sheet_refreshsub(sht->ctl, sht->vx0 + bx0, sht->vy0 + by0, sht->vx0 + bx1, sht->vy0 + by1, sht->height, sht->height);
@@ -154,7 +154,7 @@ void sheet_refresh(struct SHEET const *const sht, const int bx0, const int by0, 
 void sheet_refreshsub(struct SHTCTL const *const ctl, int vx0, int vy0, int vx1, int vy1, const int h0, const int h1)
 {
     /*
-    从下到上在指定区域绘制:高度在h0（含）至h1（含）之间的所有可见图层
+    从下到上在指定区域(超尾)绘制:高度在h0（含）至h1（含）之间的所有可见图层
         v打头变量：实际屏幕坐标
         b打头变量：相对于图层原点的坐标
     */

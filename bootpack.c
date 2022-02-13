@@ -13,8 +13,32 @@ void Main(void)
     // 初始化中断
     init_gdtidt();
     init_pic();
-    // 中断初始化完成，开放中断
+    // 中断初始化完成，开放中断（但除了IRQ2都禁止了）
     io_sti();
+
+    // 时钟PIT初始化
+    init_pit();
+    // 定时器1
+    struct FIFO8 timerfifo1;
+    char timerbuf1[8];
+    fifo8_init(&timerfifo1, 8, timerbuf1);
+    struct TIMER *timer1 = timer_alloc();
+    timer_init(timer1, &timerfifo1, 1);
+    timer_settime(timer1, 1000);
+    // 定时器2
+    struct FIFO8 timerfifo2;
+    char timerbuf2[8];
+    fifo8_init(&timerfifo2, 8, timerbuf2);
+    struct TIMER *timer2 = timer_alloc();
+    timer_init(timer2, &timerfifo2, 1);
+    timer_settime(timer2, 300);
+    // 定时器3
+    struct FIFO8 timerfifo3;
+    char timerbuf3[8];
+    fifo8_init(&timerfifo3, 8, timerbuf3);
+    struct TIMER *timer3 = timer_alloc();
+    timer_init(timer3, &timerfifo3, 1);
+    timer_settime(timer3, 50);
 
     // 键鼠FIFO初始化
     extern struct FIFO8 keyfifo, mousefifo;
@@ -22,9 +46,6 @@ void Main(void)
     fifo8_init(&keyfifo, 32, keybuf);
     char mousebuf[128];
     fifo8_init(&mousefifo, 128, mousebuf);
-    // 键鼠中断初始化
-    io_out8(PIC0_IMR, 0xf9); // 11111001 开放PIC1和键盘中断
-    io_out8(PIC1_IMR, 0xef); // 11101111 开放鼠标中断
     // 键盘控制器初始化
     init_keyboard();
     // 鼠标本体初始化
@@ -49,7 +70,6 @@ void Main(void)
     init_screen8(buf_back, binfo->SCRNX, binfo->SCRNY);
     sheet_slide(sht_back, 0, 0); // 此时图层还不可见，不会绘图
     // 窗口图层
-    int count = 0;
     struct SHEET *sht_win = sheet_alloc(shtctl);
     unsigned char *buf_win = (unsigned char *)memman_alloc_4k(memman, 160 * 52);
     sheet_setbuf(sht_win, buf_win, 160, 52, -1); // 没有透明色
@@ -77,25 +97,28 @@ void Main(void)
     putfonts8_asc(buf_back, binfo->SCRNX, 0, 32, white, s);
     sheet_refresh(sht_back, 0, 0, binfo->SCRNX, 48);
 
+    // 开放中断
+    io_out8(PIC0_IMR, 0xf8); // 11111000 开放时钟、从PIC、键盘中断
+    io_out8(PIC1_IMR, 0xef); // 11101111 开放鼠标中断
+
     int i;
     for (;;)
     {
-        count++;
-        sprintf(s, "%010d", count);
+        sprintf(s, "%010d", timerctl.count);
         boxfill8(buf_win, 160, gray, 40, 28, 119, 43);
         putfonts8_asc(buf_win, 160, 40, 28, black, s);
         sheet_refresh(sht_win, 40, 28, 120, 44);
 
         io_cli(); // 先屏蔽中断
-        if (fifo8_status(&keyfifo) + fifo8_status(&mousefifo) == 0)
+        if (fifo8_status(&keyfifo) + fifo8_status(&mousefifo) + fifo8_status(&timerfifo1) + fifo8_status(&timerfifo2) + fifo8_status(&timerfifo3) == 0)
             /*
             此处使用stihlt指令，相当于STI指令后紧跟着HLT指令，
             这两条指令执行之间发生中断的话，中断会在HLT指令之后被受理。
-            如果分开用sti和HLT，中间发生中断的话，
+            如果分开用STI和HLT，中间发生中断的话，
             CPU会进入HLT状态不处理中断。
             */
-            //io_stihlt(); // 恢复接受中断，待机
-            io_sti(); // 不待机，提高性能
+            // io_stihlt(); // 恢复接受中断，待机。当收到中断后就会恢复执行HLT指令之后的指令
+            io_sti(); // 回复接收中断。不待机，提高性能
         else
         {
             if (fifo8_status(&keyfifo))
@@ -141,6 +164,37 @@ void Main(void)
                     sheet_refresh(sht_back, 0, 0, 80, 16);
                     sheet_slide(sht_mouse, mx, my);
                 }
+            }
+            else if (fifo8_status(&timerfifo1))
+            {
+                i = fifo8_get(&timerfifo1);
+                io_sti();
+                putfonts8_asc(buf_back, binfo->SCRNX, 0, 64, white, "10[sec]");
+                sheet_refresh(sht_back, 0, 64, 56, 80);
+            }
+            else if (fifo8_status(&timerfifo2))
+            {
+                i = fifo8_get(&timerfifo2);
+                io_sti();
+                putfonts8_asc(buf_back, binfo->SCRNX, 0, 80, white, "3[sec]");
+                sheet_refresh(sht_back, 0, 80, 48, 96);
+            }
+            else if (fifo8_status(&timerfifo3))
+            {
+                i = fifo8_get(&timerfifo3);
+                io_sti();
+                if (i != 0)
+                {
+                    timer_init(timer3, &timerfifo3, 0);
+                    boxfill8(buf_back, binfo->SCRNX, white, 8, 96, 15, 111);
+                }
+                else
+                {
+                    timer_init(timer3, &timerfifo3, 1);
+                    boxfill8(buf_back, binfo->SCRNX, lightdarkblue, 8, 96, 15, 111);
+                }
+                timer_settime(timer3, 50);
+                sheet_refresh(sht_back, 8,96,16,112);
             }
         }
     }

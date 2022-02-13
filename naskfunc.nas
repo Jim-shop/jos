@@ -17,9 +17,9 @@
 		GLOBAL	_io_load_eflags, _io_store_eflags
 		GLOBAL	_load_gdtr, _load_idtr
 		GLOBAL	_load_cr0, _store_cr0
-		GLOBAL	_asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+		GLOBAL	_asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
 		GLOBAL	_asm_memtest_sub ; 用C语言可以实现，此处只留作备份
-		EXTERN	_inthandler21, _inthandler27, _inthandler2c
+		EXTERN	_inthandler20, _inthandler21, _inthandler27, _inthandler2c
 
 
 ; 以下是实际的函数
@@ -126,32 +126,48 @@ _store_cr0:		; void store_cr0(int cr0);
 		MOV		CR0, EAX
 		RET
 
-_asm_inthandler21:
+_asm_inthandler20:
 		; PUSH EAX 相当于:
 		; 	ADD ESP, -4
 		; 	MOV [SS:ESP], EAX
 		; POP EAX 相当于：
 		;	MOV EAX, [SS:ESP]
 		; 	ADD ESP, 4
-		PUSH	ES				
+		PUSH	ES
 		PUSH	DS
 		PUSHAD					; 相当于PUSH EAX,ECX,EDX,EBX,ESP,ESI,EDI
 		MOV		EAX, ESP
-		PUSH	EAX				
+		PUSH	EAX
 		; 以上5句保存寄存器的值
 		MOV		AX, SS			; SS 栈段寄存器
 		MOV		DS, AX
-		MOV		ES, AX			
+		MOV		ES, AX
 		; 让DS,ES与SS相等，因为C语言默认它们相等
 		; 如此设定才能保证C语言代码顺利执行
 		; 保存好寄存器的值并配置好环境后就能移交C语言执行了
-		CALL	_inthandler21	; CALL 调用函数
+		CALL	_inthandler20	; CALL 调用函数
 		; C语言执行完成返回此处，接下来就还原寄存器的值
 		POP		EAX
 		POPAD
 		POP		DS
 		POP		ES
 		IRETD					; 返回触发中断前位置
+
+_asm_inthandler21:
+		PUSH	ES				
+		PUSH	DS
+		PUSHAD
+		MOV		EAX, ESP
+		PUSH	EAX				
+		MOV		AX, SS
+		MOV		DS, AX
+		MOV		ES, AX
+		CALL	_inthandler21
+		POP		EAX
+		POPAD
+		POP		DS
+		POP		ES
+		IRETD
 
 _asm_inthandler27:
 		PUSH	ES

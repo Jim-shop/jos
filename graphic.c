@@ -57,7 +57,7 @@ void set_palette(int start, const int end, unsigned char *rgb)
 void boxfill8(unsigned char *const vram, const int xsize, unsigned char const c, int const x0, int y0, int const x1, int const y1)
 {
     /*
-    给一个方框填充颜色。(x0,y0)左上 (x1,y1)右下
+    给一个方框填充颜色。(x0,y0)左上 (x1,y1)右下（无超尾）
     */
     int x;
     for (; y0 <= y1; y0++)

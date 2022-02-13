@@ -1,18 +1,18 @@
 format:
-	/* Ÿ?•`q?Úô—ª */
+	/* æ­¤å¤„æè¿°é“¾æ¥ç­–ç•¥ */
 	code(align:1, logic:0x24,      file:0x24);
 	data(align:4, logic:stack_end, file:code_end);
 
 file:
-	/* Ÿ?•`q•s”\İ–½—ßs’†Ê“ü“I.obj•¶Œ˜a.lib•¶Œ */
-	/* ’ˆÓFŸ•”•ª‰ÂˆÈÊ¬‘S˜HŒa */
-	/* —áF  c:/osask/gg00libc.lib;  */
+	/* æ­¤å¤„æè¿°ä¸èƒ½åœ¨å‘½ä»¤è¡Œä¸­å†™å…¥çš„.objæ–‡ä»¶å’Œ.libæ–‡ä»¶ */
+	/* æ³¨æ„ï¼šæ­¤éƒ¨åˆ†å¯ä»¥å†™æˆå…¨è·¯å¾„ */
+	/* ä¾‹ï¼š  c:/osask/gg00libc.lib;  */
 	./z_tools/haribote/harilibc.lib;
 	./z_tools/haribote/golibc.lib;
 
 label:
-	/* w’è•K??Ú“I?? */
-	/* w’è“üŒû“_ */
+	/* æŒ‡å®šå¿…é¡»é“¾æ¥çš„å‡½æ•° */
+	/* æŒ‡å®šå…¥å£ç‚¹ */
 	_Main;
 
-	/* ˆÈã3’i“I?˜•s“¾X‰üI*/
+	/* ä»¥ä¸Š3æ®µçš„é¡ºåºä¸å¾—æ›´æ”¹ï¼*/

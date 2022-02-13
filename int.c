@@ -48,13 +48,13 @@ void init_pic(void)
 
 /*
     中断处理完成后，使用指令
-    io_out8(PIC0_OCW2, 0x61);
+    io_out8(PIC0_OCW2, 0x??);
     通知PIC IRQ 已经受理完毕，
     这样PIC就能继续时刻监视该IRQ中断是否发生。
     没有通知的话，PIC就不再监视对应IRQ中断。
 
     PIC0：中断的PIC
-    0x61：对于PIC0：0x60+IRQ号(0~7)
+    0x??：对于PIC0：0x60+IRQ号(0~7)
           对于PIC1：0x60+IRQ号(8~15) - 8
 
     PIC1 通知完后还要通知 PIC0 的 IRQ 2，

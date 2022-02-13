@@ -44,6 +44,8 @@ void init_gdtidt(void)
 
     for (i = 0; i <= LIMIT_IDT / 8; i++)
         set_gatedesc(idt + i, 0, 0, 0);
+    // 中断号20：时钟
+    set_gatedesc(idt + 0x20, (int)asm_inthandler20, 2 << 3, AR_INTGATE32);
     // 中断号21：PS/2键盘
     set_gatedesc(idt + 0x21, (int)asm_inthandler21, 2 << 3, AR_INTGATE32);
     // 中断号2c：PS/2鼠标

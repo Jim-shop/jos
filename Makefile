@@ -15,7 +15,7 @@ BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
 RULEFILE    := $(TOOLKIT)/jos.rul
 EDIMG    	:= $(TOOLPATH)edimg.exe
 IMGTOL      := $(TOOLPATH)imgtol.com
-IMG			:= jos.img
+IMG			:= jos.vfd
 
 .PHONY: 
 	default clean img run
@@ -33,7 +33,7 @@ ipl.bin: ipl.nas Makefile
 
 ### 系统编译
 
-# 所有.c文件编译到.obj
+# 所有.c .nas文件编译到.obj
 %.gas: %.c Makefile
 	@$(CC1) -o $*.gas $*.c
 %.nas: %.gas Makefile
@@ -48,7 +48,7 @@ font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
 # 所需.obj编译到.hrb
-OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj naskfunc.obj font.obj
+OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj naskfunc.obj font.obj
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile
@@ -73,11 +73,14 @@ $(IMG): ipl.bin jos.sys Makefile
 ####### 指令
 
 clean:
-	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.vfd *.img *.sys
+	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys
 	-@del bootpack.nas
 
-img:
-	@make $(IMG)
+clean_all: clean
+	-@del *.img *.vfd
+
+img: 
+	@$(MAKE) $(IMG)
 
 run: $(IMG) Makefile
 	@set SDL_VIDEODRIVER=windib
