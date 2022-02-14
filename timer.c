@@ -22,11 +22,15 @@ void init_pit(void)
     io_out8(PIT_CNT0, 0x9c);
     io_out8(PIT_CNT0, 0x2e); // 0x2e9c = 11932，这样大约是100Hz
     timerctl.count = 0;
-    timerctl.next = 0xffffffff;
-    timerctl.using = 0;
     int i;
     for (i = 0; i < MAX_TIMER; i++)
         timerctl.timers0[i].flags = 0;
+    struct TIMER *t = timer_alloc(); // 哨兵
+    t->timeout = 0xffffffff;
+    t->flags = TIMER_FLAGS_USING;
+    t->next = 0; // 末尾
+    timerctl.t0 = t;
+    timerctl.next = 0xffffffff;
     return;
 }
 
@@ -54,7 +58,7 @@ void timer_free(struct TIMER *const timer)
     return;
 }
 
-void timer_init(struct TIMER *const timer, struct FIFO8 *const fifo, unsigned char const data)
+void timer_init(struct TIMER *const timer, struct FIFO32 *const fifo, unsigned int const data)
 {
     /*
     初始化timer。
@@ -67,27 +71,37 @@ void timer_init(struct TIMER *const timer, struct FIFO8 *const fifo, unsigned ch
 void timer_settime(struct TIMER *const timer, unsigned int const timeout)
 {
     /*
-    设定timer的定时。
+    设定timer的定时。timeout: 相对时间
+    由于有了哨兵机制，新加入的timer不会是最后一个timer。
     */
-    timer->timeout = timeout + timerctl.count;
+    timer->timeout = timeout + timerctl.count; // 转化为绝对时间
     timer->flags = TIMER_FLAGS_USING;
     int eflags = io_load_eflags();
     io_cli(); // 时钟中断会影响这里的设置，先关了
-    int i;
-    // 找到插入位置
-    for (i = 0; i < timerctl.using; i++)
-        if (timerctl.timers[i]->timeout >= timer->timeout)
-            break;
-    // 后面的后移
-    int j;
-    for (j = timerctl.using; j > i; j--)
-        timerctl.timers[j] = timerctl.timers[j - 1];
-    // 插入
-    timerctl.using ++;
-    timerctl.timers[i] = timer;
-    timerctl.next = timerctl.timers[0]->timeout;
-    io_store_eflags(eflags);
-    return;
+    struct TIMER *t = timerctl.t0;
+    if (timer->timeout <= t->timeout)
+    { // 插入最前面
+        timer->next = t;
+        timerctl.t0 = timer;
+        timerctl.next = timer->timeout;
+        io_store_eflags(eflags);
+        return;
+    }
+    // 插不到最前面
+    struct TIMER *s;
+    for (;;)
+    {
+        s = t;
+        t = t->next;
+        if (timer->timeout <= t->timeout)
+        { // 插到s,t之间
+            s->next = timer;
+            timer->next = t;
+            io_store_eflags(eflags);
+            return;
+        }
+    }
+    return; // 除非哨兵出问题，否则应该到不了这里
 }
 
 void inthandler20(int *esp)
@@ -99,24 +113,17 @@ void inthandler20(int *esp)
     timerctl.count++;
     if (timerctl.next > timerctl.count)
         return;
-    // 有定时器超时：
-    int i;
-    for (i = 0; i < timerctl.using; i++)
+    // 能执行到这行以下的说明有定时器超时：
+    struct TIMER *timer = timerctl.t0;
+    for (;;)
     {
-        if (timerctl.timers[i]->timeout > timerctl.count)
+        if (timer->timeout > timerctl.count)
             break;
-        timerctl.timers[i]->flags = TIMER_FLAGS_ALLOC;
-        fifo8_put(timerctl.timers[i]->fifo, timerctl.timers[i]->data);
+        timer->flags = TIMER_FLAGS_ALLOC;
+        fifo32_put(timer->fifo, timer->data);
+        timer = timer->next;
     }
-    // 有i个定时器超时
-    timerctl.using -= i;
-    int j;
-    for (j = 0; j < timerctl.using; j++)
-        timerctl.timers[j] = timerctl.timers[i + j];
-    if (timerctl.using > 0)
-        timerctl.next = timerctl.timers[0]->timeout;
-    else
-        timerctl.next = 0xffffffff;
-
+    timerctl.t0 = timer;
+    timerctl.next = timerctl.timers0->timeout; // 有哨兵兜底
     return;
 }

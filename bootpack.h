@@ -112,21 +112,22 @@ void inthandler27(int *esp);
 #define PORT_KEYDAT 0x0060
 
 // fifo.c
-struct FIFO8
+struct FIFO32
 {
-    unsigned char *buf;
+    int *buf;
     // 队尾，队头，缓冲区总大小，缓冲区空闲数，标志位
-    unsigned int end, start, size, free, flags;
+    int end, start, size, free, flags;
 };
-void fifo8_init(struct FIFO8 *const fifo, const int size, unsigned char *const buf);
-int fifo8_put(struct FIFO8 *const fifo, unsigned char const data);
-int fifo8_get(struct FIFO8 *const fifo);
-int fifo8_status(struct FIFO8 *const fifo);
+void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf);
+int fifo32_put(struct FIFO32 *const fifo, int const data);
+int fifo32_get(struct FIFO32 *const fifo);
+int fifo32_status(struct FIFO32 *const fifo);
 #define FLAGS_OVERRUN 0x0001
 
 // keyboard.c
+extern struct FIFO32 *keyfifo;
 void wait_KBC_sendready(void);
-void init_keyboard(void);
+void init_keyboard(struct FIFO32 *const fifo, const int data0);
 void inthandler21(int *esp);
 #define PORT_KEYDAT 0x0060        // 键盘输入的数据（编码）
 #define PORT_KEYSTA 0x0064        // 键盘控制电路的状态输出设备号
@@ -136,6 +137,7 @@ void inthandler21(int *esp);
 #define KBC_MODE 0x47             // 鼠标模式
 
 // mouse.c
+extern struct FIFO32 *mousefifo;
 struct MOUSE_DEC
 {
     /*
@@ -145,7 +147,7 @@ struct MOUSE_DEC
     unsigned char buf[3], phase;
     int x, y, btn;
 };
-void enable_mouse(struct MOUSE_DEC *const mdec);
+void enable_mouse(struct FIFO32 *const fifo, const int data0, struct MOUSE_DEC *const mdec);
 int mouse_decode(struct MOUSE_DEC *const mdec, unsigned char const dat);
 void inthandler2c(int *esp);
 #define KEYCMD_SENDTO_MOUSE 0xd4 // 向键盘控制电路发送这个数据，写往DAT的下一个数据就会自动转发给鼠标
@@ -210,16 +212,16 @@ void sheet_free(struct SHEET *const sht);
 #define MAX_TIMER 500
 struct TIMER
 {
+    struct TIMER *next;          // 下一个触发的timer
     unsigned int timeout, flags; // timeout: 设定时刻（绝对时间）
-    struct FIFO8 *fifo;          // 一旦达到timeout，就往FIFO内发送data的数据
-    unsigned char data;
+    struct FIFO32 *fifo;         // 一旦达到timeout，就往FIFO内发送data的数据
+    int data;
 };
 struct TIMERCTL
 {
-    unsigned int count;              // 计时
-    unsigned int next;               // 下一个timer的时间点
-    unsigned int using;              // 现在有多少计时器正在使用中
-    struct TIMER *timers[MAX_TIMER]; // 按timeout升序排列
+    unsigned int count; // 计时
+    unsigned int next;  // 下一个timer的时间点
+    struct TIMER *t0;   // 链表，按timeout升序排列
     struct TIMER timers0[MAX_TIMER];
 };
 extern struct TIMERCTL timerctl;
@@ -231,7 +233,7 @@ void init_pit(void);
 void inthandler20(int *esp);
 struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *const timer);
-void timer_init(struct TIMER *const timer, struct FIFO8 *const fifo, unsigned char const data);
+void timer_init(struct TIMER *const timer, struct FIFO32 *const fifo, unsigned int const data);
 void timer_settime(struct TIMER *const timer, unsigned int const timeout);
 
 #endif

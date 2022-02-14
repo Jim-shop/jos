@@ -4,6 +4,9 @@
 
 #include "bootpack.h"
 
+struct FIFO32 *mousefifo;
+int mousedata0;
+
 /*
 为了节省处理资源，鼠标控制电路默认不激活，不发送中断信号。
 
@@ -16,11 +19,14 @@
 正常完成键盘控制电路的初始化，鼠标电路控制器也就激活了。
 */
 
-void enable_mouse(struct MOUSE_DEC *const mdec)
+void enable_mouse(struct FIFO32 *const fifo, const int data0, struct MOUSE_DEC *const mdec)
 {
     /*
-    激活鼠标本身。
+    初始化FIFO；激活鼠标本身。
     */
+    mousefifo = fifo;
+    mousedata0 = data0;
+
     wait_KBC_sendready();
     io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
     wait_KBC_sendready();
@@ -77,8 +83,6 @@ int mouse_decode(struct MOUSE_DEC *const mdec, unsigned char const dat)
     }
 }
 
-struct FIFO8 mousefifo;
-
 void inthandler2c(int *esp)
 {
     /*
@@ -86,6 +90,6 @@ void inthandler2c(int *esp)
     */
     io_out8(PIC1_OCW2, 0x64); // PIC1 IRQ 12
     io_out8(PIC0_OCW2, 0x62); // PIC0 IRQ 2
-    fifo8_put(&mousefifo, io_in8(PORT_KEYDAT));
+    fifo32_put(mousefifo, mousedata0 + io_in8(PORT_KEYDAT));
     return;
 }

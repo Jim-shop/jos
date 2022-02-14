@@ -1,8 +1,16 @@
 ; jos-asmhead
 
+[INSTRSET "i486p"]			; 知会汇编器想要使用486指令（32位）
 
+; 显示信息参数设定
+	; 画面模式如：
+	; 0x101: 640x480x8bit
+	; 0x103: 800x600x8bit
+	; 0x105: 1024x768x8bit
+	; 0x107: 1280x1024x8bit (qemu无法指定)
+VBEMODE EQU		0x105
 
-; 汇编常量
+; 信息存取地址
 CYLS    EQU     0x0ff0      ; [BYTE]读入的柱面数
 LEDS    EQU     0x0ff1      ; [BYTE]键盘LED状态
 VMODE   EQU     0x0ff2      ; [BYTE]颜色位数
@@ -11,19 +19,73 @@ SCRNX   EQU     0x0ff4      ; [WORD]分辨率x
 SCRNY   EQU     0x0ff6      ; [WORD]分辨率y
 VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
 
-; 记录信息
+
     ORG     0xc200          ; 知会汇编程序 程序被装载在此内存地址
 
-    MOV     AL, 0x13        ; VGA显卡，320x200，8位调色板
-    MOV     AH, 0x00        ; 设置显卡模式的标头
+; 确认VBE是否存在
+	MOV		AX, 0x9000
+	MOV 	ES, AX
+	MOV		DI, 0			; 显卡能利用的VBE信息要写入[ES:DI]开始的512字节中
+	MOV		AX, 0x4f00
+	INT		0x10
+	CMP		AX, 0x004f		; 如果有VBE，AX就会变成0x004f
+	JNE		scrn320			; 没有VBE，只能用基础分辨率了
+; 检查VBE的版本
+	MOV		AX, [ES:DI+4]
+	CMP		AX, 0x0200		; 0x0200: VBE 2.0
+	JB		scrn320			; 版本未够，也只能用基础分辨率
+; 取得画面模式信息
+	MOV 	CX, VBEMODE
+	MOV		AX, 0x4f01
+	INT		0x10			; 画面信息被写入[ES:DI]开始的256字节中（这次会覆盖VBE版本信息）
+	CMP		AX, 0x004f		; 如果不相等，说明所选画面模式不能使用
+	JNE		scrn320			; 显卡不支持，也只能用基础分辨率
+; 确认画面模式信息
+	; 画面模式信息中重要的信息：需确认⚪
+	; WORD	[ES:DI+0x00]	模式属性。（要能加上0x4000的话bit7得是1）⚪
+	; WORD	[ES:DI+0x12]	分辨率x
+	; WORD	[ES:DI+0x14]	分辨率y
+	; BYTE	[ES:DI+0x19]	颜色数（得是8）⚪
+	; BYTE	[ES:DI+0x1b]	颜色的指定方法（得是4，即调色板模式）⚪
+	; DWORD	[ES:DI+0x28]	VRAM地址
+	CMP		BYTE [ES:DI+0x19], 8
+	JNE		scrn320
+	CMP		BYTE [ES:DI+0x1b], 4
+	JNE		scrn320
+	MOV		AX, [ES:DI+0x00]
+	AND 	AX, 0x0080
+	JZ		scrn320
+; 能留下来的都是精品，进行画面模式的切换，顺便保存信息
+	; 设置VESA BIOS extension(VBE)画面：
+	; 1. AX = 0x4f02
+	; 2. BX = 0x4000 + 画面模式。
+	; 3. INT 0x10
+	MOV		BX, VBEMODE+0x4000
+	MOV 	AX, 0x4f02
+	INT		0x10
+	MOV		AX, [ES:DI+0x12]
+	MOV		[SCRNX], AX
+	MOV		AX, [ES:DI+0x14]
+	MOV		[SCRNY], AX
+	MOV		EAX, [ES:DI+0x28]
+	MOV		[VRAM], EAX
+	JMP		keystatus		; 跳过 scrn320 执行后面的 keystatus
+; 被过程淘汰的在这里设置画面模式并保存信息
+scrn320:
+	; 设置IBM BIOS画面模式
+    ; 1. MOV     AL, 0x13        ; VGA显卡，320x200，8位调色板
+    ; 2. MOV     AH, 0x00        ; 设置显卡模式的标头
+	; 3. INT	 0x10
+	MOV     AL, 0x13
+	MOV     AH, 0x00
     INT     0x10
-    ; 记录画面模式
-    ; VRAM 0xa0000~0xaffff
     MOV     BYTE [VMODE], 8 
-    MOV     WORD [SCRNX], 320
-    MOV     WORD [SCRNY], 200
-    MOV     DWORD [VRAM], 0x000a0000
-    ; 通过BIOS取得键盘上各LED灯状态
+    MOV     WORD [SCRNX], 1024
+    MOV     WORD [SCRNY], 768
+    MOV     DWORD [VRAM], 0x000a0000	; VRAM 0xa0000~0xaffff
+
+; 通过BIOS取得键盘上各LED灯状态
+keystatus:
     MOV     AH, 0x02
     INT     0x16            ; 键盘BIOS
     MOV     [LEDS], AL
@@ -37,7 +99,6 @@ VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
 	; 如果连续执行OUT指令，有些机种会无法正常运行
 	NOP						; 所以使用 NOP 指令什么也不干，休息一个时钟
 	OUT		0xa1, AL		; PIC1_IMR 0xff
-
 	CLI						; 禁止CPU级别的中断
 
 ; 为了让CPU能够访问1MB以上的内存空间，设定A20GATE
@@ -52,8 +113,6 @@ VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
 	CALL	waitkbdout		; 等待A20GATE处理切实完成
 
 ; 准备切换到32位保护模式
-[INSTRSET "i486p"]			; 知会汇编器想要使用486指令（32位）
-
 	LGDT	[GDTR0]			; 设置临时GDT
 	MOV		EAX, CR0		; CR0: control register 0 只有系统能操作
 	AND		EAX, 0x7fffffff	; 设置bit31为0（禁用分页）
@@ -75,6 +134,7 @@ pipelineflush:
 	MOV		GS, AX
 	MOV		SS, AX
 
+; bootpack 储存信息
 BOTPAK	EQU		0x00280000		; 加载bootpack
 DSKCAC	EQU		0x00100000		; 磁盘缓存的位置
 DSKCAC0	EQU		0x00008000		; 磁盘缓存的位置（实模式）

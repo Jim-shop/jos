@@ -4,7 +4,7 @@
 
 #include "bootpack.h"
 
-void fifo8_init(struct FIFO8 *const fifo, const int size, unsigned char *const buf)
+void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf)
 {
     /*
     初始化FIFO缓冲区
@@ -18,7 +18,7 @@ void fifo8_init(struct FIFO8 *const fifo, const int size, unsigned char *const b
     return;
 }
 
-int fifo8_put(struct FIFO8 *const fifo, unsigned char const data)
+int fifo32_put(struct FIFO32 *const fifo, int const data)
 {
     /*
     向FIFO传送数据并保存。返回值0代表执行成功，-1表示溢出
@@ -36,9 +36,9 @@ int fifo8_put(struct FIFO8 *const fifo, unsigned char const data)
     return 0;
 }
 
-int fifo8_get(struct FIFO8 *const fifo)
+int fifo32_get(struct FIFO32 *const fifo)
 {
-    /* 
+    /*
     从FIFO取得一个数据。返回-1表示队列为空，否则返回取到的值
      */
     int data;
@@ -52,7 +52,7 @@ int fifo8_get(struct FIFO8 *const fifo)
     return data;
 }
 
-int fifo8_status(struct FIFO8 *const fifo)
+int fifo32_status(struct FIFO32 *const fifo)
 {
     /*
     返回缓冲区内待处理的数据量
