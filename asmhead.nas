@@ -63,6 +63,7 @@ VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
 	MOV		BX, VBEMODE+0x4000
 	MOV 	AX, 0x4f02
 	INT		0x10
+	MOV		BYTE [VMODE], 8
 	MOV		AX, [ES:DI+0x12]
 	MOV		[SCRNX], AX
 	MOV		AX, [ES:DI+0x14]
@@ -80,8 +81,8 @@ scrn320:
 	MOV     AH, 0x00
     INT     0x10
     MOV     BYTE [VMODE], 8 
-    MOV     WORD [SCRNX], 1024
-    MOV     WORD [SCRNY], 768
+    MOV     WORD [SCRNX], 320
+    MOV     WORD [SCRNY], 200
     MOV     DWORD [VRAM], 0x000a0000	; VRAM 0xa0000~0xaffff
 
 ; 通过BIOS取得键盘上各LED灯状态
@@ -183,7 +184,7 @@ skip:
 waitkbdout:
 	IN		AL, 0x64
 	AND		AL, 0x02
-	IN		AL, 0x60		; 空读（为了清空数据接收缓冲区中的垃圾数据）
+	;IN		AL, 0x60		; 空读（为了清空数据接收缓冲区中的垃圾数据）
 	JNZ		waitkbdout		; AND的结果如果不是0，就跳到waitkbdout
 	RET
 

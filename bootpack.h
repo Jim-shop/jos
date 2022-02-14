@@ -32,6 +32,9 @@ void asm_inthandler21(void);
 void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int asm_memtest_sub(unsigned int start, unsigned int end); //已用C语言实现，仅做备份
+void load_tr(int tr);
+void taskswitch3(void);
+void taskswitch4(void);
 
 // font 提供的字库
 extern const char font[4096];
@@ -45,7 +48,7 @@ void set_palette(int start, const int end, unsigned char *rgb);
 void boxfill8(unsigned char *const vram, const int xsize, unsigned char const c, int const x0, int y0, int const x1, int const y1);
 void init_screen8(unsigned char *const vram, int const x, int const y);
 void putfont8(unsigned char *const vram, int const xsize, int const x, int const y, char const c, char const *const font);
-void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int y, const char c, unsigned char const *s);
+void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int y, const char c, char const *s);
 void init_mouse_cursor8(char *const mouse, const char bc);
 void putblock8_8(unsigned char *const vram, const int vxsize, const int pxsize, const int pysize, const int px0, const int py0, char const *const buf, const int bxsize);
 enum COLOR
@@ -69,6 +72,16 @@ enum COLOR
 };
 
 // dsctbl.c
+#define ADR_IDT 0x0026f800   // 任选的，储存IDT表的位置
+#define LIMIT_IDT 0x000007ff // IDT表的项数
+#define ADR_GDT 0x00270000   // 任选的，储存GDT表的位置
+#define LIMIT_GDT 0x0000ffff // GDT表的项数
+#define ADR_BOTPAK 0x00280000
+#define LIMIT_BOTPAK 0x0007ffff
+#define AR_DATA32_RW 0x4092
+#define AR_CODE32_ER 0x409a
+#define AR_TSS32 0x0089     // TSS32的访问权限
+#define AR_INTGATE32 0x008e // IDT属性，表示用于中断处理的有效设定
 struct SEGMENT_DESCRIPTOR
 { // GDT中的8字节内容
     short limit_low, base_low;
@@ -81,18 +94,11 @@ struct GATE_DESCRIPTOR
     char dw_count, access_right;
     short offset_high;
 };
+extern struct SEGMENT_DESCRIPTOR *gdt;
+extern struct GATE_DESCRIPTOR *idt;
 void init_gdtidt(void);
 void set_segmdesc(struct SEGMENT_DESCRIPTOR *const sd, unsigned int limit, const int base, int ar);
 void set_gatedesc(struct GATE_DESCRIPTOR *const gd, const int offset, const int selector, const int ar);
-#define ADR_IDT 0x0026f800   // 任选的，储存IDT表的位置
-#define LIMIT_IDT 0x000007ff // IDT表的项数
-#define ADR_GDT 0x00270000   // 任选的，储存GDT表的位置
-#define LIMIT_GDT 0x0000ffff // GDT表的项数
-#define ADR_BOTPAK 0x00280000
-#define LIMIT_BOTPAK 0x0007ffff
-#define AR_DATA32_RW 0x4092
-#define AR_CODE32_ER 0x409a
-#define AR_INTGATE32 0x008e // IDT属性，表示用于中断处理的有效设定
 
 // int.c
 void init_pic(void);
@@ -121,7 +127,7 @@ struct FIFO32
 void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf);
 int fifo32_put(struct FIFO32 *const fifo, int const data);
 int fifo32_get(struct FIFO32 *const fifo);
-int fifo32_status(struct FIFO32 *const fifo);
+int fifo32_status(struct FIFO32 const *const fifo);
 #define FLAGS_OVERRUN 0x0001
 
 // keyboard.c

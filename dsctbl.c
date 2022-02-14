@@ -19,15 +19,16 @@ GDT 8字节记录内容：
 低8位：可以设置系统模式(0x9a)/应用模式(0xfa)，读写、执行权限等
 */
 
+// 这俩地址是任选的无特殊用途的地址：
+struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *)ADR_GDT;
+struct GATE_DESCRIPTOR *idt = (struct GATE_DESCRIPTOR *)ADR_IDT;
+
 void init_gdtidt(void)
 {
     /*
     初始化全局段号记录表GDT和中断记录表IDT
     */
 
-    // 这俩地址是任选的无特殊用途的地址：
-    struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *)ADR_GDT;
-    struct GATE_DESCRIPTOR *idt = (struct GATE_DESCRIPTOR *)ADR_IDT;
     int i;
 
     // GDT

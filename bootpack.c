@@ -10,6 +10,16 @@ void make_window8(unsigned char *buf, int xsize, int ysize, char *title);
 void putfonts8_asc_sht(struct SHEET *const sht, const int x, const int y, const int c, const int b, char const *const s, const int l);
 void make_textbox8(struct SHEET *const sht, const int x0, const int y0, const int sx, const int sy, const int c);
 
+struct TSS32
+{                                                            // TSS 任务代码段。CPU JMP到TSS上时就会执行任务切换。
+    int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;      // 任务设置相关信息
+    int eip, eflags, eax, ecx, edx, ebx, esp, ebp, esi, edi; // 保存32位寄存器状态
+    int es, cs, ss, ds, fs, gs;                              // 保存16位寄存器的状态
+    int ldtr, iomap;                                         // ldtr=0, iomap=0x40000000
+};
+
+void task_b_main(void);
+
 void Main(void)
 {
     // 初始化中断
@@ -93,11 +103,36 @@ void Main(void)
     // 鼠标坐标绘制
     char s[40];
     sprintf(s, "(%3d, %3d)", mx, my);
-    putfonts8_asc(buf_back, binfo->SCRNX, 0, 0, white, s);
+    putfonts8_asc_sht(sht_back, 0, 0, white, lightdarkblue, s, 10);
     // 内存信息显示
-    sprintf(s, "memory %dMB free : %dKB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
-    putfonts8_asc(buf_back, binfo->SCRNX, 0, 32, white, s);
-    sheet_refresh(sht_back, 0, 0, binfo->SCRNX, 48);
+    sprintf(s, "memory %dMB   free : %dKB", memtotal / (1024 * 1024), memman_total(memman) / 1024);
+    putfonts8_asc_sht(sht_back, 0, 32, white, lightdarkblue, s, 40);
+
+    // 多任务
+    struct TSS32 tss_a, tss_b;
+    tss_a.ldtr = 0;
+    tss_a.iomap = 0x40000000;
+    tss_b.ldtr = 0;
+    tss_b.iomap = 0x40000000;
+    set_segmdesc(gdt + 3, 103, (unsigned int)&tss_a, AR_TSS32);
+    set_segmdesc(gdt + 4, 103, (unsigned int)&tss_b, AR_TSS32);
+    load_tr(3 * 8); // 让CPU任务寄存器记住当前运行什么任务（GDT表编号乘8）
+    tss_b.eip = (int)&task_b_main;
+    tss_b.eflags = 0x00000202; // IF=1
+    tss_b.eax = 0;
+    tss_b.ecx = 0;
+    tss_b.edx = 0;
+    tss_b.ebx = 0;
+    tss_b.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024; // 申请64k栈并指向栈底
+    tss_b.ebp = 0;
+    tss_b.esi = 0;
+    tss_b.edi = 0;
+    tss_b.es = 1 * 8;
+    tss_b.cs = 2 * 8; // GDT 2号
+    tss_b.ss = 1 * 8;
+    tss_b.ds = 1 * 8;
+    tss_b.fs = 1 * 8;
+    tss_b.gs = 1 * 8;
 
     // 开放中断
     io_out8(PIC0_IMR, 0xf8); // 11111000 开放时钟、从PIC、键盘中断
@@ -115,7 +150,6 @@ void Main(void)
             CPU会进入HLT状态不处理中断。
             */
             io_stihlt(); // 恢复接受中断，待机。当收到中断后就会恢复执行HLT指令之后的指令
-        // io_sti(); // 回复接收中断。不待机，全速运行
         else
         {
             i = fifo32_get(&fifo);
@@ -124,7 +158,7 @@ void Main(void)
             {
                 sprintf(s, "%02X", i - 256);
                 putfonts8_asc_sht(sht_back, 0, 16, white, lightdarkblue, s, 2);
-                static char keytable[0x54] = {
+                const static char keytable[0x54] = {
                     0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0, 0,
                     'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '@', '[', 0, 0, 'A', 'S',
                     'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', ':', 0, 0, ']', 'Z', 'X', 'C', 'V',
@@ -175,13 +209,14 @@ void Main(void)
                     sprintf(s, "(%3d, %3d)", mx, my);
                     putfonts8_asc_sht(sht_back, 0, 0, white, lightdarkblue, s, 10);
                     sheet_slide(sht_mouse, mx, my);
-                    if(mdec.btn&0x01)
+                    if (mdec.btn & 0x01)
                         sheet_slide(sht_win, mx - 80, my - 8);
                 }
             }
             else if (i == 10) // 10秒定时器
             {
                 putfonts8_asc_sht(sht_back, 0, 64, white, lightdarkblue, "10[sec]", 7);
+                taskswitch4();
             }
             else if (i == 3) // 3秒定时器
             {
@@ -189,7 +224,7 @@ void Main(void)
             }
             else if (i <= 1) // 键盘光标定时器
             {
-                if (i)
+                if (i != 0)
                 {
                     timer_init(timer3, &fifo, 0);
                     cursor_c = black;
@@ -199,8 +234,8 @@ void Main(void)
                     timer_init(timer3, &fifo, 1);
                     cursor_c = white;
                 }
-                boxfill8(sht_win->buf, sht_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
                 timer_settime(timer3, 50);
+                boxfill8(sht_win->buf, sht_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
                 sheet_refresh(sht_win, cursor_x, 28, cursor_x + 8, 44);
             }
         }
@@ -212,7 +247,7 @@ void make_window8(unsigned char *const buf, const int xsize, const int ysize, ch
     /*
     制造窗口的buf
     */
-    static char closebtn[14][16] =
+    const static char closebtn[14][16] =
         {
             "OOOOOOOOOOOOOOO@",
             "OQQQQQQQQQQQQQ$@",
@@ -287,4 +322,32 @@ void make_textbox8(struct SHEET *const sht, const int x0, const int y0, const in
     boxfill8(sht->buf, sht->bxsize, gray, x1 + 1, y0 - 2, x1 + 1, y1 + 1);
     boxfill8(sht->buf, sht->bxsize, c, x0 - 1, y0 - 1, x1 + 0, y1 + 0);
     return;
+}
+
+void task_b_main(void)
+{
+    struct FIFO32 fifo;
+    int fifobuf[128];
+    fifo32_init(&fifo, 128, fifobuf);
+
+    struct TIMER *timer = timer_alloc();
+    timer_init(timer, &fifo, 1);
+    timer_settime(timer, 500);
+
+    int i;
+    for (;;)
+    {
+        io_cli();
+        if (fifo32_status(&fifo) == 0)
+        {
+            io_stihlt();
+        }
+        else
+        {
+            i = fifo32_get(&fifo);
+            io_sti();
+            if (i == 1) // 5时已到
+                taskswitch3(); // 返回任务A
+        }
+    }
 }

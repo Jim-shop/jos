@@ -175,7 +175,7 @@ int memman_free(struct MEMMAN *const man, unsigned int const addr, unsigned int 
     // 前后都不能恰好相连
     if (man->frees < MEMMAN_FREES)
     {
-        for (j = man->frees; j > i; i--)
+        for (j = man->frees; j > i; j--)
             man->free[j] = man->free[j - 1];
         man->frees++;
         if (man->maxfrees < man->frees)

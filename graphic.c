@@ -126,7 +126,7 @@ void putfont8(unsigned char *const vram, int const xsize, int const x, int const
     }
 }
 
-void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int y, const char c, unsigned char const *s)
+void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int y, const char c, char const *s)
 {
     /*
     显示字符串

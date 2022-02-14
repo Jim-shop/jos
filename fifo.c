@@ -52,7 +52,7 @@ int fifo32_get(struct FIFO32 *const fifo)
     return data;
 }
 
-int fifo32_status(struct FIFO32 *const fifo)
+int fifo32_status(struct FIFO32 const *const fifo)
 {
     /*
     返回缓冲区内待处理的数据量

@@ -17,8 +17,10 @@
 		GLOBAL	_io_load_eflags, _io_store_eflags
 		GLOBAL	_load_gdtr, _load_idtr
 		GLOBAL	_load_cr0, _store_cr0
+		GLOBAL	_load_tr
 		GLOBAL	_asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
 		GLOBAL	_asm_memtest_sub ; 用C语言可以实现，此处只留作备份
+		GLOBAL	_taskswitch3, _taskswitch4
 		EXTERN	_inthandler20, _inthandler21, _inthandler27, _inthandler2c
 
 
@@ -124,6 +126,10 @@ _load_cr0:		; int load_cr0(void);
 _store_cr0:		; void store_cr0(int cr0);
 		MOV		EAX, [ESP+4]
 		MOV		CR0, EAX
+		RET
+
+_load_tr:		; void load_tr(int tr);
+		LTR		[ESP+4]
 		RET
 
 _asm_inthandler20:
@@ -234,3 +240,11 @@ mts_fin:
 		POP		ESI
 		POP		EDI
 		RET
+
+_taskswitch3:	; void taskswitch3(void);
+		JMP		3*8:0					; 冒号前部分指向TSS，冒号后没有实际作用，写0即可
+		RET								; 上行的任务JMP完成后会返回到这一行
+
+_taskswitch4:	; void taskswitch4(void);
+		JMP		4*8:0
+		RET	

@@ -101,7 +101,7 @@ void timer_settime(struct TIMER *const timer, unsigned int const timeout)
             return;
         }
     }
-    return; // 除非哨兵出问题，否则应该到不了这里
+    // 除非哨兵出问题，否则应该到不了这里
 }
 
 void inthandler20(int *esp)
@@ -124,6 +124,6 @@ void inthandler20(int *esp)
         timer = timer->next;
     }
     timerctl.t0 = timer;
-    timerctl.next = timerctl.timers0->timeout; // 有哨兵兜底
+    timerctl.next = timer->timeout; // 有哨兵兜底
     return;
 }
