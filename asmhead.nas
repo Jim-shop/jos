@@ -179,12 +179,12 @@ DSKCAC0	EQU		0x00008000		; 磁盘缓存的位置（实模式）
 	CALL	memcpy
 skip:
 	MOV		ESP, [EBX+12]	; 堆栈的初始化
-	JMP		DWORD 2*8:0x0000001b
+	JMP		DWORD 2*8:0x0000001b	; JMP FAR 到第二段0x1b位置
 
 waitkbdout:
 	IN		AL, 0x64
 	AND		AL, 0x02
-	;IN		AL, 0x60		; 空读（为了清空数据接收缓冲区中的垃圾数据）
+	IN		AL, 0x60		; 空读（为了清空数据接收缓冲区中的垃圾数据）
 	JNZ		waitkbdout		; AND的结果如果不是0，就跳到waitkbdout
 	RET
 

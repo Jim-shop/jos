@@ -33,8 +33,7 @@ void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int asm_memtest_sub(unsigned int start, unsigned int end); //已用C语言实现，仅做备份
 void load_tr(int tr);
-void taskswitch3(void);
-void taskswitch4(void);
+void farjmp(int eip, int cs);
 
 // font 提供的字库
 extern const char font[4096];
@@ -241,5 +240,10 @@ struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *const timer);
 void timer_init(struct TIMER *const timer, struct FIFO32 *const fifo, unsigned int const data);
 void timer_settime(struct TIMER *const timer, unsigned int const timeout);
+
+// mtask.c
+extern struct TIMER *mt_timer;
+void mt_init(void);
+void mt_taskswitch(void);
 
 #endif

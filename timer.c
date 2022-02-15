@@ -114,16 +114,22 @@ void inthandler20(int *esp)
     if (timerctl.next > timerctl.count)
         return;
     // 能执行到这行以下的说明有定时器超时：
+    char ts = 0;
     struct TIMER *timer = timerctl.t0;
     for (;;)
     {
         if (timer->timeout > timerctl.count)
             break;
         timer->flags = TIMER_FLAGS_ALLOC;
-        fifo32_put(timer->fifo, timer->data);
+        if (timer != mt_timer)
+            fifo32_put(timer->fifo, timer->data);
+        else
+            ts = 1;
         timer = timer->next;
     }
     timerctl.t0 = timer;
     timerctl.next = timer->timeout; // 有哨兵兜底
+    if (ts != 0)
+        mt_taskswitch(); // 全部处理完成后再切换任务
     return;
 }

@@ -10,6 +10,15 @@ void make_window8(unsigned char *buf, int xsize, int ysize, char *title);
 void putfonts8_asc_sht(struct SHEET *const sht, const int x, const int y, const int c, const int b, char const *const s, const int l);
 void make_textbox8(struct SHEET *const sht, const int x0, const int y0, const int sx, const int sy, const int c);
 
+// 可显示键位表
+const static char keytable[0x54] = {
+    0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
+    0, 0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']',
+    0, 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',
+    0, '\\', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/', 0, '*',
+    0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.'};
+
 struct TSS32
 {                                                            // TSS 任务代码段。CPU JMP到TSS上时就会执行任务切换。
     int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;      // 任务设置相关信息
@@ -18,7 +27,9 @@ struct TSS32
     int ldtr, iomap;                                         // ldtr=0, iomap=0x40000000
 };
 
-void task_b_main(void);
+// 各个主函数不要使用return语句，return返回[ESP]地址，而[ESP]这里没有写入
+
+void task_b_main(struct SHEET *const sht_back);
 
 void Main(void)
 {
@@ -114,16 +125,19 @@ void Main(void)
     tss_a.iomap = 0x40000000;
     tss_b.ldtr = 0;
     tss_b.iomap = 0x40000000;
-    set_segmdesc(gdt + 3, 103, (unsigned int)&tss_a, AR_TSS32);
+    set_segmdesc(gdt + 3, 103, (unsigned int)&tss_a, AR_TSS32); // 用段保存GSS表
     set_segmdesc(gdt + 4, 103, (unsigned int)&tss_b, AR_TSS32);
-    load_tr(3 * 8); // 让CPU任务寄存器记住当前运行什么任务（GDT表编号乘8）
+    load_tr(3 * 8); // 将当前任务定为 GDT3所指的TSS
+    // 申请64k栈并指向栈底，-8方便我们放一个位于ESP+4的4字节C语言参数
+    int task_b_esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024 - 8;
+    *((int *)(task_b_esp + 4)) = (int)sht_back; // 将sht_back地址作为B的第一个参数
     tss_b.eip = (int)&task_b_main;
-    tss_b.eflags = 0x00000202; // IF=1
+    tss_b.eflags = 0x00000202; // 中断允许标志IF=1
     tss_b.eax = 0;
     tss_b.ecx = 0;
     tss_b.edx = 0;
     tss_b.ebx = 0;
-    tss_b.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024; // 申请64k栈并指向栈底
+    tss_b.esp = task_b_esp;
     tss_b.ebp = 0;
     tss_b.esi = 0;
     tss_b.edi = 0;
@@ -133,6 +147,7 @@ void Main(void)
     tss_b.ds = 1 * 8;
     tss_b.fs = 1 * 8;
     tss_b.gs = 1 * 8;
+    mt_init();
 
     // 开放中断
     io_out8(PIC0_IMR, 0xf8); // 11111000 开放时钟、从PIC、键盘中断
@@ -158,13 +173,6 @@ void Main(void)
             {
                 sprintf(s, "%02X", i - 256);
                 putfonts8_asc_sht(sht_back, 0, 16, white, lightdarkblue, s, 2);
-                const static char keytable[0x54] = {
-                    0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '^', 0, 0,
-                    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '@', '[', 0, 0, 'A', 'S',
-                    'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', ':', 0, 0, ']', 'Z', 'X', 'C', 'V',
-                    'B', 'N', 'M', ',', '.', '/', 0, '*', 0, ' ', 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, '7', '8', '9', '-', '4', '5', '6', '+', '1',
-                    '2', '3', '0', '.'};
                 if (i < 256 + 0x54) // 别越界
                     if (keytable[i - 256] && cursor_x < 144)
                     {
@@ -216,7 +224,6 @@ void Main(void)
             else if (i == 10) // 10秒定时器
             {
                 putfonts8_asc_sht(sht_back, 0, 64, white, lightdarkblue, "10[sec]", 7);
-                taskswitch4();
             }
             else if (i == 3) // 3秒定时器
             {
@@ -324,30 +331,52 @@ void make_textbox8(struct SHEET *const sht, const int x0, const int y0, const in
     return;
 }
 
-void task_b_main(void)
+void task_b_main(struct SHEET *const sht_back)
 {
+    // 事件队列
     struct FIFO32 fifo;
     int fifobuf[128];
     fifo32_init(&fifo, 128, fifobuf);
 
-    struct TIMER *timer = timer_alloc();
-    timer_init(timer, &fifo, 1);
-    timer_settime(timer, 500);
+    // 显示定时器
+    struct TIMER *timer_put = timer_alloc();
+    timer_init(timer_put, &fifo, 1);
+    timer_settime(timer_put, 1); // 0.01s
+    // 性能测试
+    struct TIMER *timer_1s = timer_alloc();
+    timer_init(timer_1s, &fifo, 100);
+    timer_settime(timer_1s, 100);
+
+    int count = 0, count0=0;
+    char s[12];
 
     int i;
     for (;;)
     {
+        count++;
+
         io_cli();
         if (fifo32_status(&fifo) == 0)
         {
-            io_stihlt();
+            io_sti(); // 火力全开
         }
         else
         {
             i = fifo32_get(&fifo);
             io_sti();
-            if (i == 1) // 5时已到
-                taskswitch3(); // 返回任务A
+            if (i == 1)
+            {
+                sprintf(s, "%11d", count);
+                putfonts8_asc_sht(sht_back, 0, 144, white, lightdarkblue, s, 11);
+                timer_settime(timer_put, 1);
+            }
+            else if (i==100)
+            {
+				sprintf(s, "%11d", count - count0);
+				putfonts8_asc_sht(sht_back, 0, 128, white, lightdarkblue, s, 11);
+				count0 = count;
+				timer_settime(timer_1s, 100);
+            }
         }
     }
 }

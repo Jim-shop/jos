@@ -48,7 +48,7 @@ font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
 # À˘–Ë.obj±‡“ÎµΩ.hrb
-OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj naskfunc.obj font.obj
+OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj mtask.obj naskfunc.obj font.obj
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile
