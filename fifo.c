@@ -4,7 +4,7 @@
 
 #include "bootpack.h"
 
-void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf)
+void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf, struct TASK *const task)
 {
     /*
     初始化FIFO缓冲区
@@ -15,6 +15,7 @@ void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf)
     fifo->flags = 0;
     fifo->end = 0;
     fifo->start = 0;
+    fifo->task = task;
     return;
 }
 
@@ -33,6 +34,9 @@ int fifo32_put(struct FIFO32 *const fifo, int const data)
     if (fifo->end == fifo->size)
         fifo->end = 0;
     fifo->free--;
+    if (fifo->task != 0)            // 如果制定了要唤醒的任务
+        if (fifo->task->flags != 2) // 如果任务正在休眠
+            task_run(fifo->task, -1, 0); // 唤醒任务
     return 0;
 }
 

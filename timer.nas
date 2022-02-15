@@ -7,9 +7,9 @@
 	EXTERN	_io_load_eflags
 	EXTERN	_io_cli
 	EXTERN	_io_store_eflags
-	EXTERN	_mt_timer
+	EXTERN	_task_timer
 	EXTERN	_fifo32_put
-	EXTERN	_mt_taskswitch
+	EXTERN	_task_switch
 [FILE "timer.c"]
 [SECTION .text]
 	GLOBAL	_init_pit
@@ -140,7 +140,7 @@ L31:
 	CMP	EAX,DWORD [_timerctl]
 	JA	L32
 	MOV	DWORD [8+EBX],1
-	CMP	EBX,DWORD [_mt_timer]
+	CMP	EBX,DWORD [_task_timer]
 	JE	L35
 	PUSH	DWORD [16+EBX]
 	PUSH	DWORD [12+EBX]
@@ -170,7 +170,7 @@ L38:
 	POP	EBX
 	POP	ESI
 	POP	EBP
-	JMP	_mt_taskswitch
+	JMP	_task_switch
 	GLOBAL	_timerctl
 [SECTION .data]
 	ALIGNB	16

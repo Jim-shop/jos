@@ -12,7 +12,7 @@ struct BOOTINFO
     unsigned short SCRNX, SCRNY; // 屏幕分辨率
     unsigned char *VRAM;         // 图像缓冲区开始地址
 };
-extern struct BOOTINFO *const binfo;
+extern struct BOOTINFO const *const binfo;
 
 // naskfunc 提供的函数
 void io_hlt(void);
@@ -50,25 +50,23 @@ void putfont8(unsigned char *const vram, int const xsize, int const x, int const
 void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int y, const char c, char const *s);
 void init_mouse_cursor8(char *const mouse, const char bc);
 void putblock8_8(unsigned char *const vram, const int vxsize, const int pxsize, const int pysize, const int px0, const int py0, char const *const buf, const int bxsize);
-enum COLOR
-{                       // 默认调色板颜色
-    black = 0,          // 000000 黑
-    red = 1,            // ff0000 亮红
-    green = 2,          // 00ff00 亮绿
-    yellow = 3,         // ffff00 亮黄
-    blue = 4,           // 0000ff 亮蓝
-    purple = 5,         // ff00ff 亮紫
-    lightblue = 6,      // 00ffff 浅亮蓝
-    white = 7,          // ffffff 白
-    gray = 8,           // c6c6c6 亮灰
-    darkred = 9,        // 840000 暗红
-    darkgreen = 10,     // 008400 暗绿
-    darkyellow = 11,    // 848400 暗黄
-    darkblue = 12,      // 000084 暗青
-    darkpurple = 13,    // 840084 暗紫
-    lightdarkblue = 14, // 008484 浅暗蓝
-    darkgray = 15       // 848484 暗灰
-};
+// 默认调色板颜色
+#define black 0          // 000000 黑
+#define red 1            // ff0000 亮红
+#define green 2          // 00ff00 亮绿
+#define yellow 3         // ffff00 亮黄
+#define blue 4           // 0000ff 亮蓝
+#define purple 5         // ff00ff 亮紫
+#define lightblue 6      // 00ffff 浅亮蓝
+#define white 7          // ffffff 白
+#define gray 8           // c6c6c6 亮灰
+#define darkred 9        // 840000 暗红
+#define darkgreen 10     // 008400 暗绿
+#define darkyellow 11    // 848400 暗黄
+#define darkblue 12      // 000084 暗青
+#define darkpurple 13    // 840084 暗紫
+#define lightdarkblue 14 // 008484 浅暗蓝
+#define darkgray 15      // 848484 暗灰
 
 // dsctbl.c
 #define ADR_IDT 0x0026f800   // 任选的，储存IDT表的位置
@@ -122,8 +120,9 @@ struct FIFO32
     int *buf;
     // 队尾，队头，缓冲区总大小，缓冲区空闲数，标志位
     int end, start, size, free, flags;
+    struct TASK *task; // 要唤醒的任务
 };
-void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf);
+void fifo32_init(struct FIFO32 *const fifo, const int size, int *const buf, struct TASK *const task);
 int fifo32_put(struct FIFO32 *const fifo, int const data);
 int fifo32_get(struct FIFO32 *const fifo);
 int fifo32_status(struct FIFO32 const *const fifo);
@@ -202,7 +201,8 @@ struct SHTCTL
     struct SHEET *sheets[MAX_SHEETS]; // 按高度升序排序的各图层信息的地址
     struct SHEET sheets0[MAX_SHEETS]; // 存放各图层信息
 };
-#define SHEET_USE 1 // flag: 正在使用的SHEET
+#define SHEET_FLAGS_USING 1 // flag: 正在使用的SHEET
+#define SHEET_FLAGS_FREE 0  // 未被使用
 struct SHTCTL *shtctl_init(struct MEMMAN *const memman, unsigned char *const vram, int xsize, int ysize);
 struct SHEET *sheet_alloc(struct SHTCTL *const ctl);
 void sheet_setbuf(struct SHEET *const sht, unsigned char *const buf, int const xsize, int const ysize, int const col_inv);
@@ -232,6 +232,7 @@ struct TIMERCTL
 extern struct TIMERCTL timerctl;
 #define PIT_CTRL 0x0043     // PIT控制设备号
 #define PIT_CNT0 0x0040     // PIT中断频率设置设备号
+#define TIMER_FLAGS_FREE 0  // 状态：未配置
 #define TIMER_FLAGS_ALLOC 1 // 状态：已配置
 #define TIMER_FLAGS_USING 2 // 状态：运行中
 void init_pit(void);
@@ -242,8 +243,49 @@ void timer_init(struct TIMER *const timer, struct FIFO32 *const fifo, unsigned i
 void timer_settime(struct TIMER *const timer, unsigned int const timeout);
 
 // mtask.c
-extern struct TIMER *mt_timer;
-void mt_init(void);
-void mt_taskswitch(void);
+#define MAX_TASKS 1000    // 最大任务数
+#define TASK_GDT0 3       // 定义从GDT几号开始分配给TSS
+#define MAX_TASKS_LV 100  // 每个级别能运行的最大任务数
+#define MAX_TASKLEVELS 10 //多少个级别
+struct TSS32
+{                                                            // TSS 任务代码段。CPU JMP到TSS上时就会执行任务切换。
+    int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;      // 任务设置相关信息
+    int eip, eflags, eax, ecx, edx, ebx, esp, ebp, esi, edi; // 保存32位寄存器状态
+    int es, cs, ss, ds, fs, gs;                              // 保存16位寄存器的状态
+    int ldtr, iomap;                                         // ldtr=0, iomap=0x40000000
+};
+struct TASK
+{
+    int sel, flags;      // sel存放GDT编号(已乘8)
+    int level, priority; // 优先级、每片时长
+    struct TSS32 tss;
+};
+struct TASKLEVEL
+{
+    int running; // 正在运行的任务数量
+    int now;     // 用来记录当前正在运行的是哪个任务
+    struct TASK *tasks[MAX_TASKS_LV];
+};
+struct TASKCTL
+{
+    int now_lv;     // 现在活动中的LEVEL
+    char lv_change; // 下次任务切换时是否需要改变LEVEL
+    struct TASKLEVEL level[MAX_TASKLEVELS];
+    struct TASK tasks0[MAX_TASKS];
+};
+#define TASK_FLAGS_FREE 0        // 未分配
+#define TASK_FLAGS_SLEEP 1       // 分配，暂未执行
+#define TASK_FLAGS_RUNNING 2     // 活动进程
+extern struct TIMER *task_timer; // 任务切换定时器
+extern struct TASKCTL *taskctl;
+struct TASK *task_now(void);
+void task_add(struct TASK *const task);
+void task_remove(struct TASK *const task);
+void task_switchsub(void);
+struct TASK *task_init(struct MEMMAN *const memman);
+struct TASK *task_alloc(void);
+void task_run(struct TASK *const task, int level, const int priority);
+void task_switch(void);
+void task_sleep(struct TASK *const task);
 
 #endif

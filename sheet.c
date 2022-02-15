@@ -26,7 +26,7 @@ struct SHTCTL *shtctl_init(struct MEMMAN *const memman, unsigned char *const vra
     int i;
     for (i = 0; i < MAX_SHEETS; i++)
     {
-        ctl->sheets0[i].flags = 0;
+        ctl->sheets0[i].flags = SHEET_FLAGS_FREE;
         ctl->sheets0[i].ctl = ctl;
     }
     return ctl;
@@ -41,10 +41,10 @@ struct SHEET *sheet_alloc(struct SHTCTL *const ctl)
     struct SHEET *sht;
     int i;
     for (i = 0; i < MAX_SHEETS; i++)
-        if (ctl->sheets0[i].flags == 0)
+        if (ctl->sheets0[i].flags == SHEET_FLAGS_FREE)
         {
             sht = &ctl->sheets0[i];
-            sht->flags = SHEET_USE;
+            sht->flags = SHEET_FLAGS_USING;
             sht->height = -1; // 隐藏
             return sht;
         }
@@ -287,6 +287,6 @@ void sheet_free(struct SHEET *const sht)
     */
     if (sht->height >= 0)
         sheet_updown(sht, -1);
-    sht->flags = 0;
+    sht->flags = SHEET_FLAGS_FREE;
     return;
 }

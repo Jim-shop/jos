@@ -47,6 +47,10 @@ _io_sti:	; void io_sti(void);
 		RET
 
 _io_stihlt:	; void io_stihlt(void);
+        ; 此处使用stihlt指令，相当于STI指令后紧跟着HLT指令，
+        ; 这两条指令执行之间发生中断的话，中断会在HLT指令之后被受理。
+        ; 如果在C语言中分开用STI和HLT，中间发生中断的话，
+        ; CPU会进入HLT状态不处理中断。
 		STI
 		HLT
 		RET

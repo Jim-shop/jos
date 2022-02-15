@@ -24,7 +24,7 @@ void init_pit(void)
     timerctl.count = 0;
     int i;
     for (i = 0; i < MAX_TIMER; i++)
-        timerctl.timers0[i].flags = 0;
+        timerctl.timers0[i].flags = TIMER_FLAGS_FREE;
     struct TIMER *t = timer_alloc(); // 哨兵
     t->timeout = 0xffffffff;
     t->flags = TIMER_FLAGS_USING;
@@ -41,7 +41,7 @@ struct TIMER *timer_alloc(void)
     */
     int i;
     for (i = 0; i < MAX_TIMER; i++)
-        if (timerctl.timers0[i].flags == 0)
+        if (timerctl.timers0[i].flags == TIMER_FLAGS_FREE)
         {
             timerctl.timers0[i].flags = TIMER_FLAGS_ALLOC;
             return &timerctl.timers0[i];
@@ -54,7 +54,7 @@ void timer_free(struct TIMER *const timer)
     /*
     释放一个timer。
     */
-    timer->flags = 0; // 未使用
+    timer->flags = TIMER_FLAGS_FREE; // 未使用
     return;
 }
 
@@ -121,7 +121,7 @@ void inthandler20(int *esp)
         if (timer->timeout > timerctl.count)
             break;
         timer->flags = TIMER_FLAGS_ALLOC;
-        if (timer != mt_timer)
+        if (timer != task_timer)
             fifo32_put(timer->fifo, timer->data);
         else
             ts = 1;
@@ -130,6 +130,6 @@ void inthandler20(int *esp)
     timerctl.t0 = timer;
     timerctl.next = timer->timeout; // 有哨兵兜底
     if (ts != 0)
-        mt_taskswitch(); // 全部处理完成后再切换任务
+        task_switch(); // timer全部处理完成后再切换任务
     return;
 }
