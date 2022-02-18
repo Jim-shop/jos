@@ -7,8 +7,8 @@ file:
 	/* 此处描述不能在命令行中写入的.obj文件和.lib文件 */
 	/* 注意：此部分可以写成全路径 */
 	/* 例：  c:/osask/gg00libc.lib;  */
-	./z_tools/haribote/harilibc.lib;
-	./z_tools/haribote/golibc.lib;
+	./include/harilibc.lib;
+	./include/golibc.lib;
 
 label:
 	/* 指定必须链接的函数 */

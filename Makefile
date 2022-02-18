@@ -2,7 +2,7 @@
 #.SHELLFLAGS := -Command
 TOOLPATH 	:= ./z_tools/
 TOOLKIT		:= ./toolkit
-INCPATH  	:= $(TOOLPATH)haribote/
+INCPATH  	:= ./include
 
 MAKE 		:= make
 NASM		:= $(TOOLPATH)nask.exe
@@ -76,7 +76,6 @@ $(IMG): ipl.bin jos.sys Makefile
 
 clean:
 	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys
-	-@del bootpack.nas
 
 clean_all: clean
 	-@del *.img *.vfd
