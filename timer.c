@@ -128,8 +128,8 @@ void inthandler20(int *esp)
         timer = timer->next;
     }
     timerctl.t0 = timer;
-    timerctl.next = timer->timeout; // 有哨兵兜底
-    if (ts != 0)
+    timerctl.next = timer->timeout; // 有哨兵兜底，不怕越界
+    if (ts)
         task_switch(); // timer全部处理完成后再切换任务
     return;
 }

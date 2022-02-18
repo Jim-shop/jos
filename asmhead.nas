@@ -12,7 +12,7 @@ VBEMODE EQU		0x105
 
 ; 信息存取地址
 CYLS    EQU     0x0ff0      ; [BYTE]读入的柱面数
-LEDS    EQU     0x0ff1      ; [BYTE]键盘LED状态
+LEDS    EQU     0x0ff1      ; [BYTE]键盘LED状态(4，5，6位依次是ScrollLock, NumLock, CapsLock)
 VMODE   EQU     0x0ff2      ; [BYTE]颜色位数
                             ; 配合C语言结构体对齐，此处内存留空
 SCRNX   EQU     0x0ff4      ; [WORD]分辨率x
@@ -89,7 +89,7 @@ scrn320:
 keystatus:
     MOV     AH, 0x02
     INT     0x16            ; 键盘BIOS
-    MOV     [LEDS], AL
+    MOV     [LEDS], AL		; 4，5，6位依次是ScrollLock, NumLock, CapsLock
 
 ; PIC关闭一切中断
 	; 根据AT兼容机的规格，如果要初始化PIC，

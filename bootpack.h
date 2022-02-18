@@ -4,15 +4,15 @@
 // asmhead 中先前存的信息
 #define ADR_BOOTINFO 0x00000ff0
 struct BOOTINFO
-{                                // 位于0x0ff0~0x0fff
-    unsigned char CYLS;          // 读入的柱面数
-    unsigned char LEDS;          // 键盘LED状态
-    unsigned char VMODE;         // 颜色位数
-    unsigned char _RESERVE;      // 结构体对齐
-    unsigned short SCRNX, SCRNY; // 屏幕分辨率
-    unsigned char *VRAM;         // 图像缓冲区开始地址
+{                                      // 位于0x0ff0~0x0fff
+    const unsigned char CYLS;          // 读入的柱面数
+    unsigned char LEDS;                // 键盘LED状态
+    const unsigned char VMODE;         // 颜色位数
+    const unsigned char _RESERVE;      // 结构体对齐
+    const unsigned short SCRNX, SCRNY; // 屏幕分辨率
+    unsigned char *const VRAM;         // 图像缓冲区开始地址
 };
-extern struct BOOTINFO const *const binfo;
+extern struct BOOTINFO *const binfo;
 
 // naskfunc 提供的函数
 void io_hlt(void);
@@ -27,12 +27,12 @@ void load_gdtr(const int limit, const int addr);
 void load_idtr(const int limit, const int addr);
 int load_cr0(void);
 void store_cr0(const int cr0);
+void load_tr(const int tr);
 void asm_inthandler20(void);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int asm_memtest_sub(unsigned int start, unsigned int end); //已用C语言实现，仅做备份
-void load_tr(int tr);
 void farjmp(int eip, int cs);
 
 // font 提供的字库
@@ -40,6 +40,10 @@ extern const char font[4096];
 
 // GOlib 头文件
 #include <stdio.h>
+
+// bootpack.c
+#define KEYCMD_LED 0xed           // 键盘灯设置端口
+
 
 // graphic.c
 void init_palette(void);
@@ -258,6 +262,7 @@ struct TASK
 {
     int sel, flags;      // sel存放GDT编号(已乘8)
     int level, priority; // 优先级、每片时长
+    struct FIFO32 fifo;
     struct TSS32 tss;
 };
 struct TASKLEVEL
@@ -287,5 +292,6 @@ struct TASK *task_alloc(void);
 void task_run(struct TASK *const task, int level, const int priority);
 void task_switch(void);
 void task_sleep(struct TASK *const task);
+void task_idle(void);
 
 #endif

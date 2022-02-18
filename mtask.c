@@ -4,8 +4,8 @@
 
 #include "bootpack.h"
 
-struct TIMER *task_timer; // 任务切换定时器
 struct TASKCTL *taskctl;
+struct TIMER *task_timer; // 任务切换定时器
 
 struct TASK *task_now(void)
 {
@@ -70,11 +70,12 @@ struct TASK *task_init(struct MEMMAN *const memman)
     /*
     初始化任务管理表，返回一个任务指针。
     */
+
     taskctl = (struct TASKCTL *)memman_alloc_4k(memman, sizeof(struct TASKCTL));
     int i;
     for (i = 0; i < MAX_TASKS; i++)
     {
-        taskctl->tasks0[i].flags = 0;
+        taskctl->tasks0[i].flags = TASK_FLAGS_FREE;
         taskctl->tasks0[i].sel = (TASK_GDT0 + i) * 8;
         set_segmdesc(gdt + TASK_GDT0 + i, 103, (int)&taskctl->tasks0[i].tss, AR_TSS32);
     }
@@ -83,16 +84,33 @@ struct TASK *task_init(struct MEMMAN *const memman)
         taskctl->level[i].running = 0;
         taskctl->level[i].now = 0;
     }
+
+    // 将主调函数设为当前任务
     struct TASK *task = task_alloc();
     task->flags = TASK_FLAGS_RUNNING;
     task->priority = 2; // 0.02s
     task->level = 0;
     task_add(task);
-    task_switchsub(); // 初始化LEVEL
-    load_tr(task->sel);
+    task_switchsub();   // 初始化LEVEL
+    load_tr(task->sel); // 初始化CPU tr寄存器（只需初始化一次）
+
+    // 任务切换定时器
     task_timer = timer_alloc();
     // 没有fifo，不必timer_init()
     timer_settime(task_timer, task->priority);
+
+    // 注册进程卫兵。当没有任务执行时就回落到卫兵上执行HLT。（使用卫兵机制减少模块设计量）
+    struct TASK *idle = task_alloc();
+	idle->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024; // 不懂为啥要这么多内存
+	idle->tss.eip = (int) &task_idle;
+	idle->tss.es = 1 * 8;
+	idle->tss.cs = 2 * 8; // GDT 2号
+	idle->tss.ss = 1 * 8;
+	idle->tss.ds = 1 * 8;
+	idle->tss.fs = 1 * 8;
+	idle->tss.gs = 1 * 8;
+    task_run(idle, MAX_TASKLEVELS - 1, 1);
+
     return task;
 }
 
@@ -143,7 +161,7 @@ void task_run(struct TASK *const task, int level, const int priority)
         task_remove(task);                                         // 从LEVEL中删除，顺便设置SLEEP，于是下面的也会执行
     if (task->flags != TASK_FLAGS_RUNNING)
     { // 从休眠状态唤醒
-        task->flags = TASK_FLAGS_RUNNING;
+        task->level = level;
         task_add(task);
     }
     taskctl->lv_change = 1; // 下次切换时检查LEVEL
@@ -159,7 +177,7 @@ void task_switch(void)
     struct TASK *now_task = tl->tasks[tl->now];
     tl->now++;
     if (tl->now == tl->running)
-        tl->now = 0; 
+        tl->now = 0;
     if (taskctl->lv_change) // 如果先前因为进程变动（休眠、增加、减少）而需要检查LEVEL
     {
         task_switchsub();
@@ -167,7 +185,7 @@ void task_switch(void)
     }
     struct TASK *new_task = tl->tasks[tl->now];
     timer_settime(task_timer, new_task->priority);
-    if(new_task!=now_task)
+    if (new_task != now_task)
         farjmp(0, new_task->sel);
     return;
 }
@@ -191,4 +209,14 @@ void task_sleep(struct TASK *const task)
         }
     }
     return;
+}
+
+void task_idle(void)
+{
+    /*
+    进程卫兵。当所有任务休眠时，就回落到此函数。
+    功能：啥也不干，休眠。
+    */
+    for (;;)
+        io_hlt();
 }
