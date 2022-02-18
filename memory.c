@@ -53,7 +53,7 @@ unsigned int memtest(unsigned const int start, unsigned const int end)
     return i;
 }
 
-unsigned int memtest_sub(unsigned int start, unsigned const int end)
+inline unsigned int memtest_sub(unsigned int start, unsigned const int end)
 {
     /*
     内存测试核心过程。

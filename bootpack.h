@@ -13,6 +13,7 @@ struct BOOTINFO
     unsigned char *const VRAM;         // 图像缓冲区开始地址
 };
 extern struct BOOTINFO *const binfo;
+#define ADR_DISKIMG 0x00100000 // 磁盘内容被asmhead放在了此处
 
 // naskfunc 提供的函数
 void io_hlt(void);
@@ -40,10 +41,10 @@ extern const char font[4096];
 
 // GOlib 头文件
 #include <stdio.h>
+#include <string.h>
 
 // bootpack.c
-#define KEYCMD_LED 0xed           // 键盘灯设置端口
-
+#define KEYCMD_LED 0xed // 键盘灯设置端口
 
 // graphic.c
 void init_palette(void);
@@ -116,7 +117,6 @@ void inthandler27(int *esp);
 #define PIC1_ICW2 0x00a1
 #define PIC1_ICW3 0x00a1
 #define PIC1_ICW4 0x00a1
-#define PORT_KEYDAT 0x0060
 
 // fifo.c
 struct FIFO32
@@ -177,7 +177,7 @@ struct MEMMAN
     struct FREEINFO free[MEMMAN_FREES];
 };
 unsigned int memtest(unsigned const int start, unsigned const int end);
-unsigned int memtest_sub(unsigned int start, unsigned const int end);
+inline unsigned int memtest_sub(unsigned int start, unsigned const int end);
 void memman_init(struct MEMMAN *const man);
 unsigned int memman_total(struct MEMMAN const *const man);
 unsigned int memman_alloc(struct MEMMAN *const man, unsigned const int size);

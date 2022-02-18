@@ -18,6 +18,10 @@ VMODE   EQU     0x0ff2      ; [BYTE]颜色位数
 SCRNX   EQU     0x0ff4      ; [WORD]分辨率x
 SCRNY   EQU     0x0ff6      ; [WORD]分辨率y
 VRAM    EQU     0x0ff8      ; [DWORD]图像缓冲区的开始地址
+; 各种文件存放地址
+BOTPAK	EQU		0x00280000	; bootpack加载到的位置
+DSKCAC	EQU		0x00100000	; 磁盘缓存的去向位置（数据复制过去只是为了方便管理）
+DSKCAC0	EQU		0x00008000	; 磁盘缓存的来源位置（实模式）
 
 
     ORG     0xc200          ; 知会汇编程序 程序被装载在此内存地址
@@ -135,11 +139,6 @@ pipelineflush:
 	MOV		GS, AX
 	MOV		SS, AX
 
-; bootpack 储存信息
-BOTPAK	EQU		0x00280000		; 加载bootpack
-DSKCAC	EQU		0x00100000		; 磁盘缓存的位置
-DSKCAC0	EQU		0x00008000		; 磁盘缓存的位置（实模式）
-
 ; bootpack传递
 	MOV		ESI, bootpack	; 源
 	MOV		EDI, BOTPAK		; 目标
@@ -179,7 +178,7 @@ DSKCAC0	EQU		0x00008000		; 磁盘缓存的位置（实模式）
 	CALL	memcpy
 skip:
 	MOV		ESP, [EBX+12]	; 堆栈的初始化
-	JMP		DWORD 2*8:0x0000001b	; JMP FAR 到第二段0x1b位置
+	JMP		DWORD 2*8:0x0000001b	; JMP FAR 到第二段0x1b位置（bootpack）
 
 waitkbdout:
 	IN		AL, 0x64
@@ -203,7 +202,6 @@ GDT0:
 	RESB	8				; 初始值
 	DW		0xffff,0x0000,0x9200,0x00cf	; 可以读写的段（segment）32bit
 	DW		0xffff,0x0000,0x9a28,0x0047	; 可执行的文件的32bit寄存器（bootpack用）
-
 	DW		0
 GDTR0:
 	DW		8*3-1

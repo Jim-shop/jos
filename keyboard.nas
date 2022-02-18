@@ -12,10 +12,13 @@
 _wait_KBC_sendready:
 	PUSH	EBP
 	MOV	EBP,ESP
+	PUSH	EAX
+	PUSH	EAX
 L2:
+	SUB	ESP,12
 	PUSH	100
 	CALL	_io_in8
-	POP	EDX
+	ADD	ESP,16
 	AND	EAX,2
 	JNE	L2
 	LEAVE
@@ -24,17 +27,32 @@ L2:
 _init_keyboard:
 	PUSH	EBP
 	MOV	EBP,ESP
+	PUSH	ECX
+	PUSH	ECX
 	MOV	EAX,DWORD [8+EBP]
 	MOV	DWORD [_keyfifo],EAX
 	MOV	EAX,DWORD [12+EBP]
 	MOV	DWORD [_keydata0],EAX
-	CALL	_wait_KBC_sendready
+L7:
+	SUB	ESP,12
+	PUSH	100
+	CALL	_io_in8
+	ADD	ESP,16
+	AND	EAX,2
+	JNE	L7
+	PUSH	EDX
+	PUSH	EDX
 	PUSH	96
 	PUSH	100
 	CALL	_io_out8
-	CALL	_wait_KBC_sendready
-	POP	ECX
-	POP	EAX
+	ADD	ESP,16
+L12:
+	SUB	ESP,12
+	PUSH	100
+	CALL	_io_in8
+	ADD	ESP,16
+	AND	EAX,2
+	JNE	L12
 	MOV	DWORD [12+EBP],71
 	MOV	DWORD [8+EBP],96
 	LEAVE
@@ -43,16 +61,22 @@ _init_keyboard:
 _inthandler21:
 	PUSH	EBP
 	MOV	EBP,ESP
+	SUB	ESP,16
 	PUSH	97
 	PUSH	32
 	CALL	_io_out8
-	PUSH	96
+	MOV	DWORD [ESP],96
 	CALL	_io_in8
-	ADD	EAX,DWORD [_keydata0]
-	MOV	DWORD [ESP],EAX
-	PUSH	DWORD [_keyfifo]
+	POP	ECX
+	POP	EDX
+	MOV	ECX,DWORD [_keydata0]
+	ADD	EAX,ECX
+	PUSH	EAX
+	MOV	EAX,DWORD [_keyfifo]
+	PUSH	EAX
 	CALL	_fifo32_put
-	LEAVE
+	MOV	ESP,EBP
+	POP	EBP
 	RET
 	GLOBAL	_keyfifo
 [SECTION .data]

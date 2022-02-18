@@ -68,6 +68,8 @@ $(IMG): ipl.bin jos.sys Makefile
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \
 		copy from:jos.sys to:@: \
+		copy from:bootpack.h to:@: \
+		copy from:bootpack.c to:@: \
 		imgout:$(IMG)
 
 ####### ЦёБо
