@@ -62,20 +62,29 @@ asmhead.bin: asmhead.nas Makefile
 jos.sys: asmhead.bin bootpack.hrb Makefile
 	@copy /B asmhead.bin+bootpack.hrb jos.sys > nul
 
+
+### 应用
+
+hlt.je: hlt.nas Makefile
+	@$(NASM) hlt.nas hlt.je hlt.lst
+
+
 ### 打包镜像
 
-$(IMG): ipl.bin jos.sys Makefile
+$(IMG): ipl.bin jos.sys Makefile hlt.je
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \
 		copy from:jos.sys to:@: \
 		copy from:bootpack.h to:@: \
 		copy from:bootpack.c to:@: \
+		copy from:hlt.je to:@: \
 		imgout:$(IMG)
+
 
 ####### 指令
 
 clean:
-	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys
+	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys *.je
 
 clean_all: clean
 	-@del *.img *.vfd
