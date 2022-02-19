@@ -54,3 +54,49 @@ void file_loadfile(unsigned int clustno, unsigned int size, char *buf, unsigned 
     }
     return;
 }
+
+struct FILEINFO *file_search(char const *const name, struct FILEINFO *const finfo, const int max)
+{
+    /*
+    根据文件名查找文件。返回匹配的文件finfo指针，无匹配时返回NULL。
+    finfo: 文件表。
+    max: 文件表中文件总项数。
+    */
+
+    // 临时变量
+    int i, j = 0;
+    char s[12];
+    for (i = 0; i < 11; i++)
+        s[i] = ' ';
+    // 将输入文件名格式规范一下
+    for (i = 0; name[i] != 0; i++)
+    {
+        if (j >= 11)     // 超过正常的文件名长度
+            return NULL; // 没有找到
+        if (name[i] == '.' && j <= 8)
+            j = 8;
+        else
+        {
+            s[j] = name[i];
+            if ('a' <= s[j] && s[j] <= 'z')
+                s[j] -= 0x20; // 将小写字母转换为大写字母
+            j++;
+        }
+    }
+    // 查找文件
+    for (i = 0; i < max;)
+    {
+        if (finfo[i].name[0] == 0x00) // 没有更多文件了
+            break;
+        if ((finfo[i].type & 0x18) == 0) // 不是目录或非文件信息
+        {
+            for (j = 0; j < 11; j++)
+                if (finfo[i].name[j] != s[j])
+                    goto next; // 不匹配
+            return finfo + i;  // 找到了
+        }
+    next:
+        i++;
+    }
+    return NULL;
+}

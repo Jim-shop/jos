@@ -6,30 +6,30 @@
 
 // 可显示键位表
 const static char keytable0[0x80] = { // 未按下Shift
-		0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
-		0, 0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']',
-		0, 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',
-		0, '\\', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/', 0, '*',
-		0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.',
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',
+	0, 0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '[', ']',
+	0, 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ';', '\'', '`',
+	0, '\\', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.', '/', 0, '*',
+	0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.',
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 const static char keytable1[0x80] = { // 按下Shift
-		0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
-		0, 0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
-		0, 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-		0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0, '*',
-		0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.',
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',
+	0, 0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}',
+	0, 0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
+	0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0, '*',
+	0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.',
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 struct BOOTINFO *const binfo = (struct BOOTINFO *const)ADR_BOOTINFO;
+struct MEMMAN *const memman = (struct MEMMAN *const)MEMMAN_ADDR;
 
 // 各个任务主函数不要使用return语句，因为return返回[ESP]地址，而[ESP]这里没有写入
-
 
 void Main(void)
 {
@@ -66,7 +66,6 @@ void Main(void)
 
 	// 内存管理初始化
 	unsigned int memtotal = memtest(0x00400000, 0xbfffffff); //总内存
-	struct MEMMAN *const memman = (struct MEMMAN *const)MEMMAN_ADDR;
 	memman_init(memman);
 	memman_free(memman, 0x00001000, 0x0009e000);
 	memman_free(memman, 0x00400000, memtotal - 0x00400000);
@@ -100,8 +99,8 @@ void Main(void)
 	sheet_setbuf(sht_win, buf_win, 160, 52, -1); // 没有透明色
 	make_window8(buf_win, 160, 52, "task_a", 1);
 	make_textbox8(sht_win, 8, 28, 144, 16, white);
-	int cursor_x = 8;													 // 光标位置
-	int cursor_c = white;											 // 光标颜色
+	int cursor_x = 8;						   // 光标位置
+	int cursor_c = white;					   // 光标颜色
 	struct TIMER *timer_blink = timer_alloc(); // 窗口A光标闪烁定时器
 	timer_init(timer_blink, &fifo, 1);
 	timer_settime(timer_blink, 50);
@@ -113,8 +112,8 @@ void Main(void)
 	make_textbox8(sht_cons, 8, 28, 240, 128, black);
 	struct TASK *task_cons = task_alloc();
 	task_cons->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024 - 12; // 申请64k栈并指向栈底，-12方便我们放位于ESP+4、ESP+8的两个4字节C语言参数
-	*((int *)(task_cons->tss.esp + 4)) = (int)sht_cons;												// 将sht_back地址作为B的第一个参数
-	*((int *)(task_cons->tss.esp + 8)) = memtotal;														// B的第二个参数
+	*((int *)(task_cons->tss.esp + 4)) = (int)sht_cons;						  // 将sht_back地址作为B的第一个参数
+	*((int *)(task_cons->tss.esp + 8)) = memtotal;							  // B的第二个参数
 	task_cons->tss.eip = (int)&console_task;
 	task_cons->tss.es = 1 * 8;
 	task_cons->tss.cs = 2 * 8;
@@ -177,7 +176,7 @@ void Main(void)
 		{
 			// io_stihlt(); // 恢复接受中断，待机。当收到中断后就会恢复执行HLT指令之后的指令
 			task_sleep(task_a); // 线程休眠
-			io_sti();						// 由于线程休眠函数中没有屏蔽中断，所以sti要在其之后，不然sleep可能出问题
+			io_sti();			// 由于线程休眠函数中没有屏蔽中断，所以sti要在其之后，不然sleep可能出问题
 		}
 		else
 		{
@@ -185,7 +184,7 @@ void Main(void)
 			io_sti(); // 取得消息种类后就可以恢复中断
 			switch (i)
 			{
-			case 256 ... 511:			// 键盘
+			case 256 ... 511:		// 键盘
 				if (i < 256 + 0x80) // 键位表大小0x80
 				{
 					if (key_shift == 0)
@@ -198,8 +197,8 @@ void Main(void)
 
 				if ('A' <= s[0] && s[0] <= 'Z')
 					if (((key_leds & 0x4) && key_shift) || // CapsLock和Shift同时On
-							(!(key_leds & 0x4) && !key_shift)) // 或同时Off时
-						s[0] += 0x20;												 // 大写转小写
+						(!(key_leds & 0x4) && !key_shift)) // 或同时Off时
+						s[0] += 0x20;					   // 大写转小写
 
 				if (s[0] != 0) // 可显示的字符
 				{
@@ -211,7 +210,7 @@ void Main(void)
 							cursor_x += 8;
 						}
 					}
-					else																				// 发送给命令行窗口
+					else										  // 发送给命令行窗口
 						fifo32_put(&task_cons->fifo, s[0] + 256); // 对方的消息队列是字符+偏移256
 				}
 				else
@@ -226,7 +225,7 @@ void Main(void)
 								cursor_x -= 8;
 							}
 						}
-						else																				// 发送给命令行窗口
+						else										  // 发送给命令行窗口
 							fifo32_put(&task_cons->fifo, '\b' + 256); // 发送退格信号
 						break;
 					case 256 + 0x0f: // Tab键
@@ -244,7 +243,7 @@ void Main(void)
 							key_to = 0;
 							make_wtitle8(buf_win, sht_win->bxsize, "task_a", 1);
 							make_wtitle8(buf_cons, sht_cons->bxsize, "console", 0);
-							cursor_c = black;								 // 重新显示光标
+							cursor_c = black;				 // 重新显示光标
 							fifo32_put(&task_cons->fifo, 3); // 控制台窗口光标OFF
 						}
 						sheet_refresh(sht_win, 0, 0, sht_win->bxsize, 21);

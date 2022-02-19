@@ -58,7 +58,7 @@ void init_gdtidt(void)
     return;
 }
 
-void set_segmdesc(struct SEGMENT_DESCRIPTOR *const sd, unsigned int limit, const int base, int ar)
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *const sd, unsigned int limit, const unsigned int base, int ar)
 {
     /*
     设置GDT表中8字节项

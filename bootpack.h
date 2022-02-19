@@ -45,6 +45,7 @@ extern const char font[4096];
 
 // bootpack.c
 #define KEYCMD_LED 0xed // 键盘灯设置端口
+extern struct MEMMAN *const memman;
 
 // graphic.c
 void init_palette(void);
@@ -99,7 +100,7 @@ struct GATE_DESCRIPTOR
 extern struct SEGMENT_DESCRIPTOR *gdt;
 extern struct GATE_DESCRIPTOR *idt;
 void init_gdtidt(void);
-void set_segmdesc(struct SEGMENT_DESCRIPTOR *const sd, unsigned int limit, const int base, int ar);
+void set_segmdesc(struct SEGMENT_DESCRIPTOR *const sd, unsigned int limit, const unsigned int base, int ar);
 void set_gatedesc(struct GATE_DESCRIPTOR *const gd, const int offset, const int selector, const int ar);
 
 // int.c
@@ -303,20 +304,34 @@ void putfonts8_asc_sht(struct SHEET *const sht, const int x, const int y, const 
 
 // file.c
 struct FILEINFO
-{														 // FAT12文件表单项内容（最多224个）
-	unsigned char name[8];		 // 文件名。第一字节0xe5代表删除了,0x00代表不包含文件信息。
-	unsigned char ext[3];			 // 扩展名
-	unsigned char type;				 // 属性信息：0x00/0x20一般文件0x01只读0x02隐藏0x04系统0x08非文件信息(磁盘名称等)0x10目录（可以叠加）
-	unsigned char reserve[10]; // 保留无用的10字节
-	unsigned short time, date; // 时间，日期
-	unsigned short clustno;		 // 簇号(小端序，地址=簇号*512+0x3e00)
-	unsigned int size;				 // 大小
+{                              // FAT12文件表单项内容（最多224个）
+    unsigned char name[8];     // 文件名。第一字节0xe5代表删除了,0x00代表不包含文件信息。
+    unsigned char ext[3];      // 扩展名
+    unsigned char type;        // 属性信息：0x00/0x20一般文件0x01只读0x02隐藏0x04系统0x08非文件信息(磁盘名称等)0x10目录（可以叠加）
+    unsigned char reserve[10]; // 保留无用的10字节
+    unsigned short time, date; // 时间，日期
+    unsigned short clustno;    // 簇号(小端序，地址=簇号*512+0x3e00)
+    unsigned int size;         // 大小
 };
 void file_readfat(unsigned short *const fat, unsigned char const *const img);
 void file_loadfile(unsigned int clustno, unsigned int size, char *buf, unsigned short const *const fat, unsigned char const *img);
+struct FILEINFO *file_search(char const *const name, struct FILEINFO *const finfo, const int max);
 
 // console.c
+struct CONSOLE
+{
+    struct SHEET *sht;
+    int cur_x, cur_y, cur_c;
+};
+extern struct FILEINFO *const finfo;
 void console_task(struct SHEET *const sheet, unsigned int const memtotal);
-int cons_newline(int cursor_y, struct SHEET *const sheet);
+void cons_newline(struct CONSOLE *const cons);
+void cons_putchar(struct CONSOLE *const cons, const char ch, const char move);
+void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned short const *const fat, unsigned int const memtotal);
+void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal);
+void cmd_cls(struct CONSOLE *const cons);
+void cmd_dir(struct CONSOLE *const cons);
+void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
+void cmd_hlt(struct CONSOLE *const cons, unsigned short const *const fat);
 
 #endif
