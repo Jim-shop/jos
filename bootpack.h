@@ -35,6 +35,8 @@ void asm_inthandler27(void);
 void asm_inthandler2c(void);
 unsigned int asm_memtest_sub(unsigned int start, unsigned int end); //已用C语言实现，仅做备份
 void farjmp(int eip, int cs);
+void farcall(int eip, int cs);
+void asm_je_api(void); // 提供给je调用的API
 
 // font 提供的字库
 extern const char font[4096];
@@ -327,11 +329,14 @@ extern struct FILEINFO *const finfo;
 void console_task(struct SHEET *const sheet, unsigned int const memtotal);
 void cons_newline(struct CONSOLE *const cons);
 void cons_putchar(struct CONSOLE *const cons, const char ch, const char move);
+void cons_putstr0(struct CONSOLE *const cons, char const *s);
+void cons_putstr1(struct CONSOLE *const cons, char const *const s, const int l);
 void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned short const *const fat, unsigned int const memtotal);
+int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
 void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal);
 void cmd_cls(struct CONSOLE *const cons);
 void cmd_dir(struct CONSOLE *const cons);
 void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
-void cmd_hlt(struct CONSOLE *const cons, unsigned short const *const fat);
+void je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 
 #endif

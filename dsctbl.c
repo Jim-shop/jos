@@ -39,6 +39,7 @@ void init_gdtidt(void)
     set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, AR_DATA32_RW);
     // 段号为2的段：大小512KB，地址0x280000，为bootpack.hrb准备
     set_segmdesc(gdt + 2, LIMIT_BOTPAK, ADR_BOTPAK, AR_CODE32_ER);
+    
     load_gdtr(LIMIT_GDT, ADR_GDT);
 
     // IDT
@@ -51,8 +52,12 @@ void init_gdtidt(void)
     set_gatedesc(idt + 0x21, (int)asm_inthandler21, 2 << 3, AR_INTGATE32);
     // 中断号2c：PS/2鼠标
     set_gatedesc(idt + 0x2c, (int)asm_inthandler2c, 2 << 3, AR_INTGATE32);
-    // 中断号27：
+    // 中断号27：某些机器的开机信号
     set_gatedesc(idt + 0x27, (int)asm_inthandler27, 2 << 3, AR_INTGATE32);
+
+    // 借用0x30到0xff的IRQ 实现 API (反正CPU也用不了这些中断号)
+    set_gatedesc(idt + 0x40, (int)asm_je_api, 2 << 3, AR_INTGATE32);
+
     load_idtr(LIMIT_IDT, ADR_IDT);
 
     return;

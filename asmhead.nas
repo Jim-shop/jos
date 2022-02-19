@@ -192,7 +192,7 @@ memcpy:
 	ADD		ESI, 4
 	MOV		[EDI], EAX
 	ADD		EDI, 4
-	SUB		ECX, 1
+	DEC		ECX				; ECX - 1
 	JNZ		memcpy			; 运算结果不为0跳转到memcpy
 	RET
 ; memcpy地址前缀大小

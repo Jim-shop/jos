@@ -37,6 +37,9 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     unsigned short *const fat = (unsigned short *const)memman_alloc_4k(memman, 2 * 2880); // 共2880扇区
     file_readfat(fat, (unsigned char *)(ADR_DISKIMG + 0x000200));
 
+    // 汇编接口
+    *((int *)0x0fec) = (int)&cons;
+
     // 提示符
     cons_putchar(&cons, '>', 1);
 
@@ -91,8 +94,8 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
                     }
                     break;
 
-                case '\n' + 256:                   // 回车信号
-                    cons_putchar(&cons, ' ', 0);   // 擦除光标
+                case '\n' + 256:                     // 回车信号
+                    cons_putchar(&cons, ' ', 0);     // 擦除光标
                     cmdline[cons.cur_x / 8 - 2] = 0; // 字串结束标志
                     cons_newline(&cons);
                     cons_runcmd(cmdline, &cons, fat, memtotal);
@@ -178,6 +181,27 @@ void cons_putchar(struct CONSOLE *const cons, const char ch, const char move)
     return;
 }
 
+void cons_putstr0(struct CONSOLE *const cons, char const *s)
+{
+    /*
+    向控制台中打印一个字符串，遇'\0'停止。
+    */
+    for (; *s != 0; s++)
+        cons_putchar(cons, *s, 1);
+    return;
+}
+
+void cons_putstr1(struct CONSOLE *const cons, char const *const s, const int l)
+{
+    /*
+    向控制台中打印 l 位长度的字符串。
+    */
+    int i;
+    for (i = 0; i < l; i++)
+        cons_putchar(cons, s[i], 1);
+    return;
+}
+
 void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned short const *const fat, unsigned int const memtotal)
 {
     /*
@@ -191,15 +215,47 @@ void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned
         cmd_dir(cons);
     else if (strncmp(cmdline, "type ", 5) == 0)
         cmd_type(cons, fat, cmdline);
-    else if (strcmp(cmdline, "hlt") == 0)
-        cmd_hlt(cons, fat);
-    else if (cmdline[0] != 0) // 不是命令也不是空行
-    {
-        putfonts8_asc_sht(cons->sht, 8, cons->cur_y, white, black, "Wrong instruction.", 18);
-        cons_newline(cons);
-        cons_newline(cons);
-    }
+    else if (cmdline[0] != 0)                 // 不是内置命令也不是空行
+        if (cmd_app(cons, fat, cmdline) == 0) // 也不是程序
+            cons_putstr0(cons, "Wrong instruction or application name.\n\n");
     return;
+}
+
+int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline)
+{
+    /*
+    查找以cmdline为文件名的je程序执行。找不到返回0，执行成功返回1
+    */
+    char name[18];
+    int i;
+    // 生成文件名
+    for (i = 0; i < 13; i++)
+    {
+        if (cmdline[i] <= ' ')
+            break;
+        name[i] = cmdline[i];
+    }
+    name[i] = 0;
+    struct FILEINFO *f = file_search(name, finfo, 224);
+    if (f == NULL && name[i - 1] != '.')
+    { // 找不到文件，就在文件名后加上".je"重新找
+        name[i] = '.';
+        name[i + 1] = 'J';
+        name[i + 2] = 'E';
+        name[i + 3] = 0;
+        f = file_search(name, finfo, 224);
+    }
+    if (f != NULL) // 找到了
+    {
+        char *p = (char *)memman_alloc_4k(memman, f->size);
+        file_loadfile(f->clustno, f->size, p, fat, (char *)(ADR_DISKIMG + 0x3e00));
+        set_segmdesc(gdt + 1003, f->size - 1, (int)p, AR_CODE32_ER);
+        farcall(0, 1003 * 8);
+        memman_free_4k(memman, (unsigned int)p, f->size);
+        cons_newline(cons);
+        return 1;
+    }
+    return 0;
 }
 
 void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal)
@@ -208,14 +264,9 @@ void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal)
     给控制台提供mem命令。
     指令功能：查询总计内存和剩余内存
     */
-    char s[30];
-    sprintf(s, "total   %dMB", memtotal / (1024 * 1024));
-    putfonts8_asc_sht(cons->sht, 8, cons->cur_y, white, black, s, 30);
-    cons_newline(cons);
-    sprintf(s, "free %dKB", memman_total(memman) / 1024);
-    putfonts8_asc_sht(cons->sht, 8, cons->cur_y, white, black, s, 30);
-    cons_newline(cons);
-    cons_newline(cons);
+    char s[60];
+    sprintf(s, "total   %dMB\nfree %dKB\n\n", memtotal / (1024 * 1024), memman_total(memman) / 1024);
+    cons_putstr0(cons, s);
     return;
 }
 
@@ -251,14 +302,13 @@ void cmd_dir(struct CONSOLE *const cons)
         {
             if ((finfo[x].type & 0x18) == 0) // 不是目录或非文件信息
             {
-                sprintf(s, "filename.ext   %7d", finfo[x].size);
+                sprintf(s, "filename.ext   %7d\n", finfo[x].size);
                 for (y = 0; y < 8; y++)
                     s[y] = finfo[x].name[y]; // 文件名
                 s[9] = finfo[x].ext[0];
                 s[10] = finfo[x].ext[1];
                 s[11] = finfo[x].ext[2]; // 扩展名
-                putfonts8_asc_sht(cons->sht, 8, cons->cur_y, white, black, s, 30);
-                cons_newline(cons);
+                cons_putstr0(cons, s);
             }
         }
     }
@@ -274,43 +324,45 @@ void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char 
     */
 
     struct FILEINFO const *const f = file_search(cmdline + 5, finfo, 224);
-    int y;
     if (f != NULL) // 找到了
     {
         char *const p = (char *)memman_alloc_4k(memman, f->size);
         file_loadfile(f->clustno, f->size, p, fat, (unsigned char *)(ADR_DISKIMG + 0x003e00));
-        for (y = 0; y < f->size; y++)
-            cons_putchar(cons, p[y], 1);
+        cons_putstr1(cons, p, f->size);
         memman_free_4k(memman, (unsigned int)p, f->size);
     }
     else // 没找到
-    {
-        putfonts8_asc_sht(cons->sht, 8, cons->cur_y, white, black, "File not found.", 15);
-        cons_newline(cons);
-    }
+        cons_putstr0(cons, "File not found.\n");
     cons_newline(cons);
     return;
 }
 
-void cmd_hlt(struct CONSOLE *const cons, unsigned short const *const fat)
+void je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax)
 {
     /*
-    启动 hlt.je
+    对接实现汇编api。
+        汇编api调用方法：
+    1. EDX 填入功能号
+    2. INT 0x40
+        功能号表：
+    1. 显示单个字符（AL=字符编码）
+    2. 显示以'\0'结尾字符串（EBX=字符串地址）
+    3. 显示某长度字符串（EBX=字符串地址，ECX=字符串长度）
     */
-    struct FILEINFO *f = file_search("HLT.JE", finfo, 224);
-    if (f != NULL) // 找到了
+    struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
+    switch (edx)
     {
-        char *const p = (char *)memman_alloc_4k(memman, f->size);
-        file_loadfile(f->clustno, f->size, p, fat, (unsigned char *)(ADR_DISKIMG + 0x003e00));
-        set_segmdesc(gdt + 1003, f->size - 1, (int)p, AR_CODE32_ER);
-        farjmp(0, 1003 * 8);
-        memman_free_4k(memman, (unsigned int)p, f->size);
+    case 1:
+        cons_putchar(cons, eax & 0xff, 1);
+        break;
+
+    case 2:
+        cons_putstr0(cons, (char *)ebx);
+        break;
+
+    case 3:
+        cons_putstr1(cons, (char *)ebx, ecx);
+        break;
     }
-    else // 没找到
-    {
-        putfonts8_asc_sht(cons->sht, 8, cons->cur_y, white, black, "File not found.", 15);
-        cons_newline(cons);
-    }
-    cons_newline(cons);
     return;
 }

@@ -48,7 +48,7 @@ font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
 # 所需.obj编译到.hrb
-OBJS_BOOTPACK := naskfunc.obj font.obj bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj mtask.obj window.obj file.obj console.obj
+OBJS_BOOTPACK := font.obj bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj mtask.obj window.obj file.obj console.obj naskfunc.obj 
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile
@@ -65,19 +65,19 @@ jos.sys: asmhead.bin bootpack.hrb Makefile
 
 ### 应用
 
-hlt.je: hlt.nas Makefile
-	@$(NASM) hlt.nas hlt.je hlt.lst
+hello.je: hello.nas Makefile
+	@$(NASM) hello.nas hello.je hello.lst
 
 
 ### 打包镜像
 
-$(IMG): ipl.bin jos.sys Makefile hlt.je
+$(IMG): ipl.bin jos.sys Makefile hello.je
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \
 		copy from:jos.sys to:@: \
 		copy from:bootpack.h to:@: \
 		copy from:bootpack.c to:@: \
-		copy from:hlt.je to:@: \
+		copy from:hello.je to:@: \
 		imgout:$(IMG)
 
 

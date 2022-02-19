@@ -20,8 +20,10 @@
 		GLOBAL	_load_tr
 		GLOBAL	_asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
 		GLOBAL	_asm_memtest_sub ; 用C语言可以实现，此处只留作备份
-		GLOBAL	_farjmp
+		GLOBAL	_farjmp, _farcall
+		GLOBAL	_asm_je_api
 		EXTERN	_inthandler20, _inthandler21, _inthandler27, _inthandler2c
+		EXTERN	_je_api
 
 
 ; 以下是实际的函数
@@ -249,4 +251,18 @@ _farjmp:		; void farjmp(int eip, int cs);
 		; CS: 段地址（规定是GDT中段号*8） EIP：偏移
 		JMP		FAR	[ESP+4]				; JMP FAR：从内存地址中读取4字节给EIP，再读2字节给CS
 		RET								; 上行的任务JMP完成后会返回到这一行
+
+_farcall:		; void farcall(int eip, int cs);
+		CALL	FAR [ESP+4]
+		RET
+
+_asm_je_api: ; void asm_je_api(void);
+		; 应用程序若要直接调用C语言函数需要压栈，不方便。所以此处提供汇编作中介
+		STI 							; 因为是从INT调用的，CPU自动禁止中断，这里没必要禁止中断，所以解除
+		PUSHAD							; ②再留一份防止C语言对寄存器的改动、对je_api参数的改动影响汇编执行
+		PUSHAD							; ①留一份作为je_api(...)的参数
+		CALL	_je_api
+		ADD		ESP, 32 				; 抵消第二个PUSHAD
+		POPAD							; 还原寄存器状态
+		IRETD							; 由于是中断调用，要用IRETD返回
 

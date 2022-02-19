@@ -9,4 +9,5 @@
 *.vfd 
 *.img 
 *.sys
+*.je
 /bootpack.nas

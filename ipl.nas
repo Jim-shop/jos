@@ -55,7 +55,7 @@ retry:
     MOV     DL, 0x00        ; 驱动器号（A盘）
     INT     0x13            ; 调用磁盘BIOS
     JNC     next            ; 没出错的话
-    ADD     SI, 1           ; 失败计数+1
+    INC     SI              ; 失败计数+1
     CMP     SI, 5           ; 判断失败次数是否达到5
     JAE     error           ; 大于等于的话
     MOV     AH, 0x00        ; 0x00复位
@@ -67,17 +67,17 @@ next:
     ADD     AX, 0x0020      ; AX加0x0020，输回ES相当于加0x200
     MOV     ES, AX          ; 缓冲区地址后移了512字节
     ; 扇区范围 1~18
-    ADD     CL, 1           ; 扇区+1（1扇区512字节）
+    INC     CL              ; 扇区+1（1扇区512字节）
     CMP     CL, 18          ; 判断扇区是否达到18
     JBE     readloop        ; 小于等于的话
     ; 磁头范围 0~1 （正面0，反面1）
     MOV     CL, 1           ; 读完一个磁头，扇区复位
-    ADD     DH, 1           ; 磁头加一
+    INC     DH              ; 磁头加一
     CMP     DH, 2
     JB      readloop
     ; 柱面范围 0~79
     MOV     DH, 0           ; 读完一个柱面，磁头复位
-    ADD     CH, 1           ; CH是柱面
+    INC     CH              ; CH是柱面
     CMP     CH, CYLS        ; CYLS 是一个常数
     JB      readloop
 
@@ -92,7 +92,7 @@ error:
     MOV     SI, msg         ; 字串数据内存位置
 putloop:
     MOV     AL,[SI]         ; 读取SI位置字节
-    ADD     SI, 1           ; 给SI加1
+    INC     SI              ; 给SI加1
     CMP     AL, 0           ; 判断字节是否为0
     JE      fin             ; 是，代表数据结束，跳转
     MOV     AH, 0x0e        ; 显示文字命令固定标头
