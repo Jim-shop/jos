@@ -10,7 +10,7 @@ CC1 		:= $(TOOLPATH)cc1.exe -I$(INCPATH) -Os -Wall -quiet
 GAS2NASK	:= $(TOOLPATH)gas2nask.exe -a
 OBJ2BIM		:= $(TOOLPATH)obj2bim.exe
 MAKEFONT	:= $(TOOLPATH)makefont.exe
-BIN2OBJ		+= $(TOOLPATH)bin2obj.exe
+BIN2OBJ		:= $(TOOLPATH)bin2obj.exe
 BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
 RULEFILE    := $(TOOLKIT)/jos.rul
 EDIMG    	:= $(TOOLPATH)edimg.exe
@@ -48,7 +48,7 @@ font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
 # À˘–Ë.obj±‡“ÎµΩ.hrb
-OBJS_BOOTPACK := bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj mtask.obj naskfunc.obj font.obj
+OBJS_BOOTPACK := naskfunc.obj font.obj bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj mtask.obj window.obj file.obj console.obj
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
 bootpack.hrb: bootpack.bim Makefile

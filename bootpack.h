@@ -294,4 +294,29 @@ void task_switch(void);
 void task_sleep(struct TASK *const task);
 void task_idle(void);
 
+// window.c
+void make_window8(unsigned char *const buf, const int xsize, const int ysize, char const *const title, char const act);
+void make_wtitle8(unsigned char *const buf, const int xsize, char const *const title, char const act);
+void make_textbox8(struct SHEET *const sht, const int x0, const int y0, const int sx, const int sy, const int c);
+void putfont8_sht(struct SHEET *const sht, const int x, const int y, const int c, const int b, const char ch);
+void putfonts8_asc_sht(struct SHEET *const sht, const int x, const int y, const int c, const int b, char const *const s, const int l);
+
+// file.c
+struct FILEINFO
+{														 // FAT12文件表单项内容（最多224个）
+	unsigned char name[8];		 // 文件名。第一字节0xe5代表删除了,0x00代表不包含文件信息。
+	unsigned char ext[3];			 // 扩展名
+	unsigned char type;				 // 属性信息：0x00/0x20一般文件0x01只读0x02隐藏0x04系统0x08非文件信息(磁盘名称等)0x10目录（可以叠加）
+	unsigned char reserve[10]; // 保留无用的10字节
+	unsigned short time, date; // 时间，日期
+	unsigned short clustno;		 // 簇号(小端序，地址=簇号*512+0x3e00)
+	unsigned int size;				 // 大小
+};
+void file_readfat(unsigned short *const fat, unsigned char const *const img);
+void file_loadfile(unsigned int clustno, unsigned int size, char *buf, unsigned short const *const fat, unsigned char const *img);
+
+// console.c
+void console_task(struct SHEET *const sheet, unsigned int const memtotal);
+int cons_newline(int cursor_y, struct SHEET *const sheet);
+
 #endif

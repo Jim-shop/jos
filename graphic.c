@@ -133,7 +133,7 @@ void putfonts8_asc(unsigned char *const vram, const int xsize, int x, const int 
     */
     for (; *s != 0x00; s++)
     {
-        putfont8(vram, xsize, x, y, c, font + *s * 16);
+        putfont8(vram, xsize, x, y, c, font + *s * 16); // 间隔16个byte
         x += 8;
     }
     return;
