@@ -29,6 +29,7 @@ void load_idtr(const int limit, const int addr);
 int load_cr0(void);
 void store_cr0(const int cr0);
 void load_tr(const int tr);
+void asm_inthandler0d(void);
 void asm_inthandler20(void);
 void asm_inthandler21(void);
 void asm_inthandler27(void);
@@ -37,6 +38,7 @@ unsigned int asm_memtest_sub(unsigned int start, unsigned int end); //已用C语
 void farjmp(int eip, int cs);
 void farcall(int eip, int cs);
 void asm_je_api(void); // 提供给je调用的API
+void start_app(int eip, int cs, int esp, int ds, int *tss_esp0);
 
 // font 提供的字库
 extern const char font[4096];
@@ -337,6 +339,7 @@ void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal);
 void cmd_cls(struct CONSOLE *const cons);
 void cmd_dir(struct CONSOLE *const cons);
 void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
-void je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+int *inthandler0d(int *esp);
 
 #endif

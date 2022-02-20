@@ -39,13 +39,15 @@ void init_gdtidt(void)
     set_segmdesc(gdt + 1, 0xffffffff, 0x00000000, AR_DATA32_RW);
     // 段号为2的段：大小512KB，地址0x280000，为bootpack.hrb准备
     set_segmdesc(gdt + 2, LIMIT_BOTPAK, ADR_BOTPAK, AR_CODE32_ER);
-    
+
     load_gdtr(LIMIT_GDT, ADR_GDT);
 
     // IDT
 
     for (i = 0; i <= LIMIT_IDT / 8; i++)
         set_gatedesc(idt + i, 0, 0, 0);
+    // 中断号0d：应用程序越权
+    set_gatedesc(idt + 0x0d, (int)asm_inthandler0d, 2 << 3, AR_INTGATE32);
     // 中断号20：时钟
     set_gatedesc(idt + 0x20, (int)asm_inthandler20, 2 << 3, AR_INTGATE32);
     // 中断号21：PS/2键盘
@@ -54,9 +56,8 @@ void init_gdtidt(void)
     set_gatedesc(idt + 0x2c, (int)asm_inthandler2c, 2 << 3, AR_INTGATE32);
     // 中断号27：某些机器的开机信号
     set_gatedesc(idt + 0x27, (int)asm_inthandler27, 2 << 3, AR_INTGATE32);
-
     // 借用0x30到0xff的IRQ 实现 API (反正CPU也用不了这些中断号)
-    set_gatedesc(idt + 0x40, (int)asm_je_api, 2 << 3, AR_INTGATE32);
+    set_gatedesc(idt + 0x40, (int)asm_je_api, 2 << 3, AR_INTGATE32 + 0x60); // 应用程序可调用
 
     load_idtr(LIMIT_IDT, ADR_IDT);
 

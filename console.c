@@ -37,7 +37,7 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     unsigned short *const fat = (unsigned short *const)memman_alloc_4k(memman, 2 * 2880); // 共2880扇区
     file_readfat(fat, (unsigned char *)(ADR_DISKIMG + 0x000200));
 
-    // 汇编接口
+    // 传递cons给API接口
     *((int *)0x0fec) = (int)&cons;
 
     // 提示符
@@ -247,15 +247,36 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
     }
     if (f != NULL) // 找到了
     {
-        char *p = (char *)memman_alloc_4k(memman, f->size);
+        /*
+            段使用情况：
+        1*8: 操作系统数据段
+        2*8: 操作系统代码段
+        3*8~1002*8: TSS
+        1003*8: 应用程序代码段
+        1004*8: 应用程序数据段
+        */
+        char *p = (char *)memman_alloc_4k(memman, f->size);   // 应用程序代码段
+        char *q = (char *)memman_alloc_4k(memman, 64 * 1024); // 应用程序数据段（64k）
+        *((int *)0xfe8) = (int)p;                             // 传递段号给API
         file_loadfile(f->clustno, f->size, p, fat, (char *)(ADR_DISKIMG + 0x3e00));
-        set_segmdesc(gdt + 1003, f->size - 1, (int)p, AR_CODE32_ER);
-        farcall(0, 1003 * 8);
+        set_segmdesc(gdt + 1003, f->size - 1, (int)p, AR_CODE32_ER + 0x60);   // 应用程序权限
+        set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int)q, AR_DATA32_RW + 0x60); // 应用程序权限/给64K内存
+        if (f->size >= 8 && strncmp(p + 4, "Hari", 4) == 0)                   // 如果是用Hari工具制作成的程序
+        {
+            p[0] = 0xe8;
+            p[1] = 0x16;
+            p[2] = 0x00;
+            p[3] = 0x00;
+            p[4] = 0x00;
+            p[5] = 0xcb; // 插入机器语言，相当于CALL 0x1b; RETF;
+        }
+        start_app(0, 1003 * 8, 64 * 1024, 1004 * 8, &(task_now()->tss.esp0)); // 64K内存
         memman_free_4k(memman, (unsigned int)p, f->size);
+        memman_free_4k(memman, (int)q, 64 * 1024);
         cons_newline(cons);
         return 1;
     }
-    return 0;
+    return 0; // 没找到
 }
 
 void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal)
@@ -337,7 +358,7 @@ void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char 
     return;
 }
 
-void je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax)
+int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax)
 {
     /*
     对接实现汇编api。
@@ -348,7 +369,10 @@ void je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     1. 显示单个字符（AL=字符编码）
     2. 显示以'\0'结尾字符串（EBX=字符串地址）
     3. 显示某长度字符串（EBX=字符串地址，ECX=字符串长度）
+    4. 结束应用程序
     */
+    int cs_base = *((int *)0xfe8);
+    struct TASK *task = task_now();
     struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
     switch (edx)
     {
@@ -357,12 +381,26 @@ void je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
         break;
 
     case 2:
-        cons_putstr0(cons, (char *)ebx);
+        cons_putstr0(cons, (char *)ebx + cs_base);
         break;
 
     case 3:
-        cons_putstr1(cons, (char *)ebx, ecx);
+        cons_putstr1(cons, (char *)ebx + cs_base, ecx);
         break;
+
+    case 4:
+        return &(task->tss.esp0);
     }
-    return;
+    return 0; // 正常返回
+}
+
+int *inthandler0d(int *esp)
+{
+    /*
+    处理INT 0d: 应用程序越权中断。
+    强制结束程序并打印错误提醒。
+    */
+    struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
+    cons_putstr0(cons, "\nINT 0D:\nGeneral Protected Exception.\n");
+    return &(task_now()->tss.esp0); // 强制结束程序
 }

@@ -18,10 +18,12 @@ IMGTOL      := $(TOOLPATH)imgtol.com
 IMG			:= jos.vfd
 
 .PHONY: 
-	default clean img run
+	default clean clean_all img run
 
 default:
 	@$(MAKE) run
+
+%: Makefile
 
 ####### 生成文件
 
@@ -39,7 +41,7 @@ ipl.bin: ipl.nas Makefile
 %.nas: %.gas Makefile
 	@$(GAS2NASK) $*.gas $*.nas
 %.obj: %.nas Makefile
-	@$(NASM) $*.nas $*.obj $*.lst
+	@$(NASM) $*.nas $*.obj
 
 # 字库编译到.obj
 font.bin: font.txt Makefile
@@ -47,37 +49,50 @@ font.bin: font.txt Makefile
 font.obj: font.bin Makefile
 	@$(BIN2OBJ) font.bin font.obj _font
 
-# 所需.obj编译到.hrb
+# 所需.obj编译到bootpack.je
 OBJS_BOOTPACK := font.obj bootpack.obj dsctbl.obj graphic.obj int.obj fifo.obj keyboard.obj mouse.obj memory.obj sheet.obj timer.obj mtask.obj window.obj file.obj console.obj naskfunc.obj 
 bootpack.bim: $(OBJS_BOOTPACK) Makefile
 	@$(OBJ2BIM) @$(RULEFILE) out:bootpack.bim stack:3136k map:bootpack.map $(OBJS_BOOTPACK)
-bootpack.hrb: bootpack.bim Makefile
-	@$(BIM2HRB) bootpack.bim bootpack.hrb 0
+bootpack.je: bootpack.bim Makefile
+	@$(BIM2HRB) bootpack.bim bootpack.je 0
 
 # 汇编部分编译到.bin
 asmhead.bin: asmhead.nas Makefile
-	@$(NASM) asmhead.nas asmhead.bin asmhead.lst
+	@$(NASM) asmhead.nas asmhead.bin
 
-# 融合.hrb .bin生成.sys系统文件
-jos.sys: asmhead.bin bootpack.hrb Makefile
-	@copy /B asmhead.bin+bootpack.hrb jos.sys > nul
+# 融合bootpack.je asmhead.bin生成.sys系统文件
+jos.sys: asmhead.bin bootpack.je Makefile
+	@copy /B asmhead.bin+bootpack.je jos.sys > nul
 
 
 ### 应用
 
-hello.je: hello.nas Makefile
-	@$(NASM) hello.nas hello.je hello.lst
+%.je: %.nas Makefile
+	@$(NASM) $*.nas $*.je
+
+%.bim: %.obj a_nask.obj Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim map:$*.map $*.obj a_nask.obj
+%.je: %.bim Makefile
+	@$(BIM2HRB) $*.bim $*.je 0
+
+a.je: a.bim
+hello3.je: hello3.bim
+crack1.je: crack1.bim
+
 
 
 ### 打包镜像
 
-$(IMG): ipl.bin jos.sys Makefile hello.je
+$(IMG): ipl.bin jos.sys Makefile hello.je hello2.je a.je hello3.je crack1.je crack2.je
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \
 		copy from:jos.sys to:@: \
-		copy from:bootpack.h to:@: \
-		copy from:bootpack.c to:@: \
 		copy from:hello.je to:@: \
+		copy from:hello2.je to:@: \
+		copy from:a.je to:@: \
+		copy from:hello3.je to:@: \
+		copy from:crack1.je to:@: \
+		copy from:crack2.je to:@: \
 		imgout:$(IMG)
 
 
@@ -89,8 +104,7 @@ clean:
 clean_all: clean
 	-@del *.img *.vfd
 
-img: 
-	@$(MAKE) $(IMG)
+img: $(IMG)
 
 run: $(IMG) Makefile
 	@set SDL_VIDEODRIVER=windib

@@ -10,6 +10,7 @@ putloop:
     INC     ECX
     JMP     putloop
 fin:
-    RETF
+    MOV     EDX, 4          ; 退出信号
+    INT     0x40
 msg:
     DB      "Hello", 0

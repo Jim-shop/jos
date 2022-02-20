@@ -19,10 +19,13 @@
 		GLOBAL	_load_cr0, _store_cr0
 		GLOBAL	_load_tr
 		GLOBAL	_asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
+		GLOBAL	_asm_inthandler0d
 		GLOBAL	_asm_memtest_sub ; 用C语言可以实现，此处只留作备份
 		GLOBAL	_farjmp, _farcall
 		GLOBAL	_asm_je_api
+		GLOBAL	_start_app
 		EXTERN	_inthandler20, _inthandler21, _inthandler27, _inthandler2c
+		EXTERN	_inthandler0d
 		EXTERN	_je_api
 
 
@@ -212,6 +215,26 @@ _asm_inthandler2c:
 		POP		DS
 		POP		ES
 		IRETD
+		
+_asm_inthandler0d:
+		STI								
+		PUSH	ES
+		PUSH	DS
+		PUSHAD
+		MOV		EAX, ESP
+		PUSH	EAX
+		MOV		AX, SS
+		MOV		DS, AX
+		MOV		ES, AX
+		CALL	_inthandler0d
+		CMP		EAX, 0					
+		JNE		end_app
+		POP		EAX
+		POPAD
+		POP		DS
+		POP		ES
+		ADD		ESP, 4					; INT 0x0d 需要
+		IRETD
 
 ; 以下三个函数已用C语言实现，此处仅留作备份
 _asm_memtest_sub:	; unsigned int asm_memtest_sub(unsigned int start, unsigned int end)
@@ -257,12 +280,49 @@ _farcall:		; void farcall(int eip, int cs);
 		RET
 
 _asm_je_api: ; void asm_je_api(void);
-		; 应用程序若要直接调用C语言函数需要压栈，不方便。所以此处提供汇编作中介
-		STI 							; 因为是从INT调用的，CPU自动禁止中断，这里没必要禁止中断，所以解除
-		PUSHAD							; ②再留一份防止C语言对寄存器的改动、对je_api参数的改动影响汇编执行
-		PUSHAD							; ①留一份作为je_api(...)的参数
+		; 应用程序若要直接调用系统C语言函数需要压栈、跨段，不方便。所以此处提供汇编作中介
+		STI
+		PUSH	DS
+		PUSH	ES
+		PUSHAD							; 将寄存器值保存到应用程序的栈中，防止C语言改乱了
+		PUSHAD							; 给je_api()传值
+		MOV		AX, SS
+		MOV		DS, AX
+		MOV		ES, AX					; 将操作系统用的段地址存入DS,ES
 		CALL	_je_api
-		ADD		ESP, 32 				; 抵消第二个PUSHAD
-		POPAD							; 还原寄存器状态
-		IRETD							; 由于是中断调用，要用IRETD返回
+		; 调用完成
+		CMP		EAX, 0					; 当返回值不为0时
+		JNE		end_app					; 将返回值作为tss.esp0地址，结束应用程序
+		ADD		ESP, 32					; 跳过为向je_api()传参压的栈		
+		POPAD
+		POP		ES
+		POP		DS						; 恢复寄存器值
+		IRETD							; 由于是中断调用，要用IRETD返回（会自动STI）
+end_app:
+		; EAX为tss.esp0的地址
+		MOV		ESP, [EAX]
+		POPAD
+		RET								; 返回cmd_app
 
+_start_app:		; void start_app(int eip, int cs, int esp, int ds, int *tss_esp0);
+		PUSHAD							; 副作用ESP-=32
+		MOV		EAX, [ESP+36]			; 应用用的eip
+		MOV		ECX, [ESP+40]			; 应用用的cs
+		MOV		EDX, [ESP+44]			; 应用用的esp
+		MOV		EBX, [ESP+48]			; 应用用的ds(ss)
+		MOV		EBP, [ESP+52]			; tss.esp0的地址
+		MOV		[EBP], ESP				; 保存操作系统用的ESP
+		MOV		[EBP+4], SS				; 保存操作系统用的SS
+		MOV		ES, BX
+		MOV		DS, BX
+		MOV		FS, BX
+		MOV		GS, BX
+		; 下面调整栈，以便用RETF跳转到应用程序
+		OR		ECX, 3					; 用3取或，处理段号，以便RETF
+		OR		EBX, 3					; 用3取或，处理段号，以便RETF
+		PUSH	EBX						; 应用程序的SS
+		PUSH	EDX						; 应用程序的ESP
+		PUSH	ECX						; 应用程序的CS
+		PUSH	EAX						; 应用程序的EIP
+		RETF							; 用上面刚存到栈中的信息跳转到应用程序执行
+		; 应用程序结束后不会回来
