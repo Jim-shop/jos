@@ -101,14 +101,14 @@ struct TASK *task_init(struct MEMMAN *const memman)
 
     // 注册进程卫兵。当没有任务执行时就回落到卫兵上执行HLT。（使用卫兵机制减少模块设计量）
     struct TASK *idle = task_alloc();
-	idle->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024; // 不懂为啥要这么多内存
-	idle->tss.eip = (int) &task_idle;
-	idle->tss.es = 1 * 8;
-	idle->tss.cs = 2 * 8; // GDT 2号
-	idle->tss.ss = 1 * 8;
-	idle->tss.ds = 1 * 8;
-	idle->tss.fs = 1 * 8;
-	idle->tss.gs = 1 * 8;
+    idle->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024; // 不懂为啥要这么多内存
+    idle->tss.eip = (int)&task_idle;
+    idle->tss.es = 1 * 8;
+    idle->tss.cs = 2 * 8; // GDT 2号
+    idle->tss.ss = 1 * 8;
+    idle->tss.ds = 1 * 8;
+    idle->tss.fs = 1 * 8;
+    idle->tss.gs = 1 * 8;
     task_run(idle, MAX_TASKLEVELS - 1, 1);
 
     return task;
@@ -141,6 +141,7 @@ struct TASK *task_alloc(void)
             task->tss.gs = 0;
             task->tss.ldtr = 0;
             task->tss.iomap = 0x40000000;
+            task->tss.ss0 = 0; // 没有应用程序在运行
             return task;
         }
     }

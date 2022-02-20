@@ -67,42 +67,44 @@ jos.sys: asmhead.bin bootpack.je Makefile
 
 ### 应用
 
-%.je: %.nas Makefile
-	@$(NASM) $*.nas $*.je
-
 %.bim: %.obj a_nask.obj Makefile
-	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim map:$*.map $*.obj a_nask.obj
+	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj a_nask.obj
 %.je: %.bim Makefile
 	@$(BIM2HRB) $*.bim $*.je 0
 
-a.je: a.bim
-hello3.je: hello3.bim
-crack1.je: crack1.bim
-
+hello.je: hello.nas Makefile
+	@$(NASM) hello.nas hello.je
+hello2.je: hello2.nas Makefile
+	@$(NASM) hello2.nas hello2.je
+crack2.je: crack2.nas Makefile
+	@$(NASM) crack2.nas crack2.je
+crack3.je: crack3.nas Makefile
+	@$(NASM) crack3.nas crack3.je	
+crack4.je: crack4.nas Makefile
+	@$(NASM) crack4.nas crack4.je
+crack5.je: crack5.nas Makefile
+	@$(NASM) crack5.nas crack5.je
+hello5.bim: hello5.obj Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:hello5.bim stack:1k map:hello5.map hello5.obj
 
 
 ### 打包镜像
 
-$(IMG): ipl.bin jos.sys Makefile hello.je hello2.je a.je hello3.je crack1.je crack2.je
+JE := hello.je hello2.je a.je hello3.je crack1.je crack2.je crack3.je crack4.je crack5.je bug1.je bug2.je bug3.je hello4.je hello5.je winhelo.je winhelo2.je
+$(IMG): ipl.bin jos.sys Makefile $(JE)
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \
 		copy from:jos.sys to:@: \
-		copy from:hello.je to:@: \
-		copy from:hello2.je to:@: \
-		copy from:a.je to:@: \
-		copy from:hello3.je to:@: \
-		copy from:crack1.je to:@: \
-		copy from:crack2.je to:@: \
+		$(patsubst %.je,copy from:%.je to:@:,$(JE)) \
 		imgout:$(IMG)
-
 
 ####### 指令
 
 clean:
-	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys *.je
+	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj
 
 clean_all: clean
-	-@del *.img *.vfd
+	-@del *.img *.vfd *.sys *.je
 
 img: $(IMG)
 

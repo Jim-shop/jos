@@ -46,6 +46,8 @@ void init_gdtidt(void)
 
     for (i = 0; i <= LIMIT_IDT / 8; i++)
         set_gatedesc(idt + i, 0, 0, 0);
+    // 中断号0c：栈异常
+    set_gatedesc(idt + 0x0c, (int)asm_inthandler0c, 2 << 3, AR_INTGATE32);
     // 中断号0d：应用程序越权
     set_gatedesc(idt + 0x0d, (int)asm_inthandler0d, 2 << 3, AR_INTGATE32);
     // 中断号20：时钟

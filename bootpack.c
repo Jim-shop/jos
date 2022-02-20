@@ -81,6 +81,7 @@ void Main(void)
 	init_palette();
 	// 图层管理器
 	struct SHTCTL *shtctl = shtctl_init(memman, binfo->VRAM, binfo->SCRNX, binfo->SCRNY);
+	*((int *)0x0fe4) = (int)shtctl; // 存一份给api用
 	// 鼠标光标图层
 	struct SHEET *sht_mouse = sheet_alloc(shtctl);
 	unsigned char buf_mouse[256];
@@ -162,6 +163,9 @@ void Main(void)
 	依次是ScrollLock, NumLock, CapsLock，
 	0表示熄灭，1表示点亮。
 	*/
+
+	// 控制台光标
+	struct CONSOLE *cons;
 
 	for (;;)
 	{
@@ -279,6 +283,17 @@ void Main(void)
 						key_leds ^= 1;
 						fifo32_put(&keycmd, KEYCMD_LED);
 						fifo32_put(&keycmd, key_leds);
+						break;
+					case 256 + 0x3b:							  // F1
+						if (key_shift && task_cons->tss.ss0 != 0) // F1 + Shift 且 正在运行应用程序
+						{
+							cons = (struct CONSOLE *)*((int *)0x0fec);
+							cons_putstr0(cons, "\nKeyboard Interrupt.\n");
+							io_cli(); // 改变寄存器值时不能被中断
+							task_cons->tss.eax = (int)&(task_cons->tss.esp0);
+							task_cons->tss.eip = (int)asm_end_app; // 强制终止任务
+							io_sti();
+						}
 						break;
 					case 256 + 0xfa: // 键盘成功接收数据
 						keycmd_wait = -1;

@@ -19,13 +19,13 @@
 		GLOBAL	_load_cr0, _store_cr0
 		GLOBAL	_load_tr
 		GLOBAL	_asm_inthandler20, _asm_inthandler21, _asm_inthandler27, _asm_inthandler2c
-		GLOBAL	_asm_inthandler0d
+		GLOBAL	_asm_inthandler0c, _asm_inthandler0d
 		GLOBAL	_asm_memtest_sub ; 用C语言可以实现，此处只留作备份
 		GLOBAL	_farjmp, _farcall
 		GLOBAL	_asm_je_api
-		GLOBAL	_start_app
+		GLOBAL	_start_app, _asm_end_app
 		EXTERN	_inthandler20, _inthandler21, _inthandler27, _inthandler2c
-		EXTERN	_inthandler0d
+		EXTERN	_inthandler0c, _inthandler0d
 		EXTERN	_je_api
 
 
@@ -216,6 +216,26 @@ _asm_inthandler2c:
 		POP		ES
 		IRETD
 		
+_asm_inthandler0c:
+		STI								
+		PUSH	ES
+		PUSH	DS
+		PUSHAD
+		MOV		EAX, ESP
+		PUSH	EAX
+		MOV		AX, SS
+		MOV		DS, AX
+		MOV		ES, AX
+		CALL	_inthandler0c
+		CMP		EAX, 0					
+		JNE		_asm_end_app
+		POP		EAX
+		POPAD
+		POP		DS
+		POP		ES
+		ADD		ESP, 4					; INT 0x0c 也需要
+		IRETD
+
 _asm_inthandler0d:
 		STI								
 		PUSH	ES
@@ -228,7 +248,7 @@ _asm_inthandler0d:
 		MOV		ES, AX
 		CALL	_inthandler0d
 		CMP		EAX, 0					
-		JNE		end_app
+		JNE		_asm_end_app
 		POP		EAX
 		POPAD
 		POP		DS
@@ -292,15 +312,17 @@ _asm_je_api: ; void asm_je_api(void);
 		CALL	_je_api
 		; 调用完成
 		CMP		EAX, 0					; 当返回值不为0时
-		JNE		end_app					; 将返回值作为tss.esp0地址，结束应用程序
+		JNE		_asm_end_app					; 将返回值作为tss.esp0地址，结束应用程序
 		ADD		ESP, 32					; 跳过为向je_api()传参压的栈		
 		POPAD
 		POP		ES
 		POP		DS						; 恢复寄存器值
 		IRETD							; 由于是中断调用，要用IRETD返回（会自动STI）
-end_app:
+
+_asm_end_app:
 		; EAX为tss.esp0的地址
 		MOV		ESP, [EAX]
+		MOV		DWORD [EAX+4], 0		; tss.ss0 := 0 标记为没有应用程序运行
 		POPAD
 		RET								; 返回cmd_app
 
