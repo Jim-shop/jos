@@ -29,13 +29,49 @@ const static char keytable1[0x80] = { // 按下Shift
 struct BOOTINFO *const binfo = (struct BOOTINFO *const)ADR_BOOTINFO;
 struct MEMMAN *const memman = (struct MEMMAN *const)MEMMAN_ADDR;
 
-// 各个任务主函数不要使用return语句，因为return返回[ESP]地址，而[ESP]这里没有写入
+int keywin_off(struct SHEET *const key_win, struct SHEET *const sht_win, int cur_c, const int cur_x)
+{
+	/*
+	控制窗口标题栏的颜色为未激活，关闭光标。返回光标颜色。
+	*/
+	change_wtitle8(key_win, 0); // 标题栏切换到不激活颜色
+	if (key_win == sht_win)
+	{
+		cur_c = -1; // 删除光标
+		boxfill8(sht_win->buf, sht_win->bxsize, white, cur_x, 28, cur_x + 7, 43);
+	}
+	else
+	{
+		if (key_win->flags & 0x20)				 // 有光标
+			fifo32_put(&key_win->task->fifo, 3); // 关闭光标
+	}
+	return cur_c;
+}
+
+int keywin_on(struct SHEET *const key_win, struct SHEET const *const sht_win, int cur_c)
+{
+	/*
+	控制窗口标题栏的颜色为激活，打开光标。返回光标颜色。
+	*/
+	change_wtitle8(key_win, 1); // 标题栏切换到激活颜色
+	if (key_win == sht_win)
+	{
+		cur_c = black; // 显示光标
+	}
+	else
+	{
+		if (key_win->flags & 0x20)				 // 有光标
+			fifo32_put(&key_win->task->fifo, 2); // 打开光标
+	}
+	return cur_c;
+}
 
 void Main(void)
 {
 	// 各种用途的临时变量
-	int i;
+	int i, j, x, y;
 	char s[40];
+	struct SHEET *sht = NULL;
 
 	// 初始化中断
 	init_gdtidt();
@@ -64,6 +100,10 @@ void Main(void)
 	struct MOUSE_DEC mdec;
 	enable_mouse(&fifo, 512, &mdec);
 
+	// 开放中断
+	io_out8(PIC0_IMR, 0xf8); // 11111000 开放时钟、从PIC、键盘中断
+	io_out8(PIC1_IMR, 0xef); // 11101111 开放鼠标中断
+
 	// 内存管理初始化
 	unsigned int memtotal = memtest(0x00400000, 0xbfffffff); //总内存
 	memman_init(memman);
@@ -82,6 +122,7 @@ void Main(void)
 	// 图层管理器
 	struct SHTCTL *shtctl = shtctl_init(memman, binfo->VRAM, binfo->SCRNX, binfo->SCRNY);
 	*((int *)0x0fe4) = (int)shtctl; // 存一份给api用
+
 	// 鼠标光标图层
 	struct SHEET *sht_mouse = sheet_alloc(shtctl);
 	unsigned char buf_mouse[256];
@@ -89,11 +130,14 @@ void Main(void)
 	init_mouse_cursor8(buf_mouse, 99);
 	int mx = (binfo->SCRNX - 16) / 2; // 光标位置，取画面中心坐标
 	int my = (binfo->SCRNY - 28 - 16) / 2;
+	int mmx = -1, mmy = -1; // 鼠标拖动时用来保存原位置
+
 	// 背景图层
 	struct SHEET *sht_back = sheet_alloc(shtctl);
 	unsigned char *buf_back = (unsigned char *)memman_alloc_4k(memman, binfo->SCRNX * binfo->SCRNY);
 	sheet_setbuf(sht_back, buf_back, binfo->SCRNX, binfo->SCRNY, -1); // 没有透明色
 	init_screen8(buf_back, binfo->SCRNX, binfo->SCRNY);
+
 	// 窗口A图层
 	struct SHEET *sht_win = sheet_alloc(shtctl);
 	unsigned char *buf_win = (unsigned char *)memman_alloc_4k(memman, 160 * 52);
@@ -105,13 +149,17 @@ void Main(void)
 	struct TIMER *timer_blink = timer_alloc(); // 窗口A光标闪烁定时器
 	timer_init(timer_blink, &fifo, 1);
 	timer_settime(timer_blink, 50);
+
 	// 控制台窗口图层
 	struct SHEET *sht_cons = sheet_alloc(shtctl);
 	unsigned char *buf_cons = (unsigned char *)memman_alloc_4k(memman, 256 * 165);
 	sheet_setbuf(sht_cons, buf_cons, 256, 165, -1); // 没有透明色
+	sht_cons->flags |= 0x20;						// 有光标
 	make_window8(buf_cons, 256, 165, "console", 0);
 	make_textbox8(sht_cons, 8, 28, 240, 128, black);
+	// 控制台任务
 	struct TASK *task_cons = task_alloc();
+	sht_cons->task = task_cons;
 	task_cons->tss.esp = memman_alloc_4k(memman, 64 * 1024) + 64 * 1024 - 12; // 申请64k栈并指向栈底，-12方便我们放位于ESP+4、ESP+8的两个4字节C语言参数
 	*((int *)(task_cons->tss.esp + 4)) = (int)sht_cons;						  // 将sht_back地址作为B的第一个参数
 	*((int *)(task_cons->tss.esp + 8)) = memtotal;							  // B的第二个参数
@@ -123,6 +171,7 @@ void Main(void)
 	task_cons->tss.fs = 1 * 8;
 	task_cons->tss.gs = 1 * 8;
 	task_run(task_cons, 2, 2);
+
 	// 设定图层位置
 	sheet_slide(sht_back, 0, 0); // 此时图层还不可见，不会绘图
 	sheet_slide(sht_mouse, mx, my);
@@ -134,17 +183,14 @@ void Main(void)
 	sheet_updown(sht_win, 2);
 	sheet_updown(sht_mouse, 3);
 
-	// 开放中断
-	io_out8(PIC0_IMR, 0xf8); // 11111000 开放时钟、从PIC、键盘中断
-	io_out8(PIC1_IMR, 0xef); // 11101111 开放鼠标中断
+	// 决定键盘输入发给哪个窗口
+	struct SHEET *key_win = sht_win;
 
 	// 发往键盘的数据
 	int keycmd_buf[32];
 	struct FIFO32 keycmd;
 	int keycmd_wait = -1; // 消息发送成功的话置-1
 	fifo32_init(&keycmd, 32, keycmd_buf, 0);
-	// 决定键盘输入发给哪个窗口
-	int key_to = 0;
 	// 左Shift按下=1，右Shift按下=2，同时按下=3，不按=0
 	int key_shift = 0;
 	// binfo->LEDS: 4，5，6位依次是ScrollLock, NumLock, CapsLock
@@ -185,7 +231,12 @@ void Main(void)
 		else
 		{
 			i = fifo32_get(&fifo);
-			io_sti(); // 取得消息种类后就可以恢复中断
+			io_sti();									   // 取得消息种类后就可以恢复中断
+			if (key_win->flags == 0)					   // 输入窗口被关闭
+			{											   // 决定被激活的窗口
+				key_win = shtctl->sheets[shtctl->top - 1]; // 鼠标图层下的最高图层
+				cursor_c = keywin_on(key_win, sht_win, cursor_c);
+			}
 			switch (i)
 			{
 			case 256 ... 511:		// 键盘
@@ -206,7 +257,7 @@ void Main(void)
 
 				if (s[0] != 0) // 可显示的字符
 				{
-					if (key_to == 0) // 发送给任务A
+					if (key_win == sht_win) // 发送给任务A
 					{
 						if (cursor_x < 144)
 						{
@@ -214,14 +265,15 @@ void Main(void)
 							cursor_x += 8;
 						}
 					}
-					else										  // 发送给命令行窗口
-						fifo32_put(&task_cons->fifo, s[0] + 256); // 对方的消息队列是字符+偏移256
+					else											  // 发送给其他任务
+						fifo32_put(&key_win->task->fifo, s[0] + 256); // 对方的消息队列是字符+偏移256
 				}
-				else
+				else // 控制字符按键
+				{
 					switch (i)
 					{
-					case 256 + 0x0e:	 // 退格键
-						if (key_to == 0) // 发送给任务A
+					case 256 + 0x0e:			// 退格键
+						if (key_win == sht_win) // 发送给任务A
 						{
 							if (cursor_x > 8)
 							{
@@ -229,33 +281,20 @@ void Main(void)
 								cursor_x -= 8;
 							}
 						}
-						else										  // 发送给命令行窗口
-							fifo32_put(&task_cons->fifo, '\b' + 256); // 发送退格信号
+						else											  // 发送给其他任务
+							fifo32_put(&key_win->task->fifo, '\b' + 256); // 发送退格信号
 						break;
 					case 256 + 0x0f: // Tab键
-						if (key_to == 0)
-						{
-							key_to = 1;
-							make_wtitle8(buf_win, sht_win->bxsize, "task_a", 0);
-							make_wtitle8(buf_cons, sht_cons->bxsize, "console", 1);
-							cursor_c = -1; // 不显示光标
-							boxfill8(sht_win->buf, sht_win->bxsize, white, cursor_x, 28, cursor_x + 7, 43);
-							fifo32_put(&task_cons->fifo, 2); // 控制台窗口光标ON
-						}
-						else
-						{
-							key_to = 0;
-							make_wtitle8(buf_win, sht_win->bxsize, "task_a", 1);
-							make_wtitle8(buf_cons, sht_cons->bxsize, "console", 0);
-							cursor_c = black;				 // 重新显示光标
-							fifo32_put(&task_cons->fifo, 3); // 控制台窗口光标OFF
-						}
-						sheet_refresh(sht_win, 0, 0, sht_win->bxsize, 21);
-						sheet_refresh(sht_cons, 0, 0, sht_cons->bxsize, 21);
+						cursor_c = keywin_off(key_win, sht_win, cursor_c, cursor_x);
+						j = key_win->height - 1; // 切换到下一层的窗口
+						if (j == 0)				 // 如果已经是最下（背景层）
+							j = shtctl->top - 1; // 就切换到最上（除开鼠标层）
+						key_win = shtctl->sheets[j];
+						cursor_c = keywin_on(key_win, sht_win, cursor_c);
 						break;
-					case 256 + 0x1c:	 // 回车键
-						if (key_to != 0) // 发送到命令行窗口
-							fifo32_put(&task_cons->fifo, '\n' + 256);
+					case 256 + 0x1c:			// 回车键
+						if (key_win != sht_win) // 发送到其他窗口
+							fifo32_put(&key_win->task->fifo, '\n' + 256);
 						break;
 					case 256 + 0x2a: // 左Shift ON
 						key_shift |= 1;
@@ -295,6 +334,10 @@ void Main(void)
 							io_sti();
 						}
 						break;
+					case 256 + 0x57:										  // F11
+						if (shtctl->top > 2)								  // 如果图层数超过2（背景、鼠标各算一个图层）
+							sheet_updown(shtctl->sheets[1], shtctl->top - 1); // 把倒数第二个图层翻到第二层（倒数第一是背景，第一是鼠标）
+						break;
 					case 256 + 0xfa: // 键盘成功接收数据
 						keycmd_wait = -1;
 						break;
@@ -303,13 +346,14 @@ void Main(void)
 						io_out8(PORT_KEYDAT, keycmd_wait);
 						break;
 					}
+				}
 				if (cursor_c >= 0) // 光标显示
 					boxfill8(sht_win->buf, sht_win->bxsize, cursor_c, cursor_x, 28, cursor_x + 7, 43);
 				sheet_refresh(sht_win, cursor_x, 28, cursor_x + 8, 44);
 				break;
 
-			case 512 ... 767: // 鼠标
-				if (mouse_decode(&mdec, i - 512) != 0)
+			case 512 ... 767:						   // 鼠标
+				if (mouse_decode(&mdec, i - 512) != 0) // 读取成功或意外
 				{
 					// 鼠标指针移动
 					mx += mdec.x;
@@ -323,8 +367,61 @@ void Main(void)
 					if (my > binfo->SCRNY - 1)
 						my = binfo->SCRNY - 1;
 					sheet_slide(sht_mouse, mx, my);
-					if (mdec.btn & 0x01)
-						sheet_slide(sht_win, mx - 80, my - 8);
+					if (mdec.btn & 0x01) // 按下左键
+					{
+						if (mmx < 0) // 如果未处于拖动模式
+						{
+							for (j = shtctl->top - 1; j > 0; j--) // 自上而下遍历在鼠标图层之下、背景图层之上的图层
+							{									  // （sheet_refreshmap因为被鼠标指针挡住了没法用，只能重新遍历）
+								sht = shtctl->sheets[j];
+								x = mx - sht->vx0;
+								y = my - sht->vy0;
+								if (0 <= x && x < sht->bxsize && 0 <= y && y < sht->bysize)
+								{
+									if (sht->buf[y * sht->bxsize + x] != sht->col_inv) // 不是透明
+									{
+										sheet_updown(sht, shtctl->top - 1);
+										if (sht != key_win) // 点选到非激活窗口
+										{
+											cursor_c = keywin_off(key_win, sht_win, cursor_c, cursor_x);
+											key_win = sht;
+											cursor_c = keywin_on(key_win, sht_win, cursor_c);
+										}
+										if (sht->bxsize - 21 <= x && x < sht->bxsize - 5 && 5 <= y && y < 19) // 点到关闭按钮
+										{
+											if ((sht->flags & 0x10) != 0) // 为应用程序窗口
+											{
+												cons = (struct CONSOLE *)*((int *)0x0fec);
+												cons_putstr0(cons, "\nMouse Interrupt.\n");
+												io_cli(); // 强制结束程序
+												task_cons->tss.eax = (int)(&task_cons->tss.esp0);
+												task_cons->tss.eip = (int)asm_end_app;
+												io_sti();
+											}
+										}
+										if (3 <= x && x < sht->bxsize - 3 && 3 <= y && y < 21) // 点到标题栏
+										{
+											mmx = mx;
+											mmy = my; // 进入拖动模式
+										}
+										break;
+									}
+								}
+							}
+						}
+						else // 拖动模式
+						{	 // 移动窗口
+							x = mx - mmx;
+							y = my - mmy;
+							sheet_slide(sht, sht->vx0 + x, sht->vy0 + y);
+							mmx = mx;
+							mmy = my;
+						}
+					}
+					else // 没有按下左键
+					{
+						mmx = -1; // 退出拖动模式
+					}
 				}
 				break;
 

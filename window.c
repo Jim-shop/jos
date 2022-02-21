@@ -22,9 +22,9 @@ void putfont8_sht(struct SHEET *const sht, const int x, const int y, const int c
 	在一个图层的某个位置打印字符。
 	x,y: 坐标   c: 颜色   b: 背景颜色   ch: 字符
 	*/
-	boxfill8(sht->buf, sht->bxsize, b, x, y, x + 7, y + 15);	// 不超尾
+	boxfill8(sht->buf, sht->bxsize, b, x, y, x + 7, y + 15);  // 不超尾
 	putfont8(sht->buf, sht->bxsize, x, y, c, font + ch * 16); // 间隔16个byte
-	sheet_refresh(sht, x, y, x + 8, y + 16);									// 超尾
+	sheet_refresh(sht, x, y, x + 8, y + 16);				  // 超尾
 	return;
 }
 
@@ -34,22 +34,22 @@ void make_wtitle8(unsigned char *const buf, const int xsize, char const *const t
 	在buf中画窗口的标题栏。
 	 */
 	const static char closebtn[14][16] =
-			{
-					"OOOOOOOOOOOOOOO@",
-					"OQQQQQQQQQQQQQ$@",
-					"OQQQQQQQQQQQQQ$@",
-					"OQQQ@@QQQQ@@QQ$@",
-					"OQQQQ@@QQ@@QQQ$@",
-					"OQQQQQ@@@@QQQQ$@",
-					"OQQQQQQ@@QQQQQ$@",
-					"OQQQQQ@@@@QQQQ$@",
-					"OQQQQ@@QQ@@QQQ$@",
-					"OQQQ@@QQQQ@@QQ$@",
-					"OQQQQQQQQQQQQQ$@",
-					"OQQQQQQQQQQQQQ$@",
-					"O$$$$$$$$$$$$$$@",
-					"@@@@@@@@@@@@@@@@",
-			};
+		{
+			"OOOOOOOOOOOOOOO@",
+			"OQQQQQQQQQQQQQ$@",
+			"OQQQQQQQQQQQQQ$@",
+			"OQQQ@@QQQQ@@QQ$@",
+			"OQQQQ@@QQ@@QQQ$@",
+			"OQQQQQ@@@@QQQQ$@",
+			"OQQQQQQ@@QQQQQ$@",
+			"OQQQQQ@@@@QQQQ$@",
+			"OQQQQ@@QQ@@QQQ$@",
+			"OQQQ@@QQQQ@@QQ$@",
+			"OQQQQQQQQQQQQQ$@",
+			"OQQQQQQQQQQQQQ$@",
+			"O$$$$$$$$$$$$$$@",
+			"@@@@@@@@@@@@@@@@",
+		};
 	int x, y;
 	char c, tc, tbc; // tc: 标题颜色 tbc：标题栏背景颜色
 	if (act)
@@ -78,6 +78,41 @@ void make_wtitle8(unsigned char *const buf, const int xsize, char const *const t
 				c = white;
 			buf[(5 + y) * xsize + (xsize - 21 + x)] = c;
 		}
+	return;
+}
+
+void change_wtitle8(struct SHEET *const sht, const char act)
+{
+	/*
+	改变窗口标题栏颜色为激活/未激活状态。
+	*/
+	char tc_new, tbc_new, tc_old, tbc_old;
+	if (act)
+	{
+		tc_new = white;
+		tbc_new = darkblue;
+		tc_old = gray;
+		tbc_old = darkgray;
+	}
+	else
+	{
+		tc_new = gray;
+		tbc_new = darkgray;
+		tc_old = white;
+		tbc_old = darkblue;
+	}
+	int x, y;
+	unsigned char *pc;
+	for (y = 3; y <= 20; y++)
+		for (x = 3; x <= sht->bxsize - 4; x++)
+		{
+			pc = &(sht->buf[y * sht->bxsize + x]);
+			if (*pc == tc_old && x <= sht->bxsize - 22) // 避开关闭键
+				*pc = tc_new;
+			else if (*pc == tbc_old)
+				*pc = tbc_new;
+		}
+	sheet_refresh(sht, 3, 3, sht->bxsize, 21);
 	return;
 }
 

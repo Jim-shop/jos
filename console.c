@@ -7,6 +7,7 @@
 // 文件信息存在软盘0x2600处
 struct FILEINFO *const finfo = (struct FILEINFO *const)(ADR_DISKIMG + 0x002600);
 
+// 各个任务主函数不要使用return语句，因为return返回[ESP]地址，而[ESP]这里没有写入
 void console_task(struct SHEET *const sheet, unsigned int const memtotal)
 {
     /*
@@ -288,9 +289,10 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
             for (i = 0; i < MAX_SHEETS; i++)
             {
                 sht = &(shtctl->sheets0[i]);
-                if (sht->flags != 0 && sht->task == task)
-                    sheet_free(sht); // 释放被应用程序遗留的窗口
+                if ((sht->flags & 0x11) == 0x11 && sht->task == task) // 有应用程序运行0x10且SHT_FLAGS_USING
+                    sheet_free(sht);                                  // 释放被应用程序遗留的窗口
             }
+            timer_cancelall(&task->fifo); // 取消以此fifo为缓冲区的所有具有自动取消属性的timer
             memman_free_4k(memman, (unsigned int)q, seg_size);
         }
         else
@@ -404,6 +406,10 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
     14. 关闭窗口（EBX=窗口句柄）
     15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
+    16. 获取定时器alloc->EAX=定时器句柄
+    17. 设置定时器的发送数据init（EBX=定时器句柄，EAX=数据）
+    18. 定时器时间设定set（EBX=定时器句柄，EAX=时间）
+    19. 释放定时器free（EBX=定时器句柄）
     */
     int ds_base = *((int *)0xfe8);
     struct TASK *task = task_now();
@@ -438,6 +444,7 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     case 5:
         sht = sheet_alloc(shtctl);
         sht->task = task;
+        sht->flags |= 0x10; // 是应用程序窗口
         sheet_setbuf(sht, (char *)ebx + ds_base, esi, edi, eax);
         make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
         sheet_slide(sht, 100, 50);
@@ -531,12 +538,32 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
                 cons->cur_c = -1;
                 break;
 
-            case 256 ... 511: // 键盘数据（taskA传过来的）
-                reg[7] = i - 256;
-                return 0;
+            default:          // taskA传过来的键盘数据、应用程序自行设置的定时器数据
+                if (i >= 256) // 应用程序数据+256=主调函数数据
+                {
+                    reg[7] = i - 256;
+                    return 0;
+                }
                 break;
             }
         }
+        break;
+
+    case 16:
+        reg[7] = (int)timer_alloc();
+        ((struct TIMER *)reg[7])->flags2 = 1; // 允许自动取消
+        break;
+
+    case 17:
+        timer_init((struct TIMER *)ebx, &task->fifo, eax + 256); // 应用程序数据+256=主调函数数据
+        break;
+
+    case 18:
+        timer_settime((struct TIMER *)ebx, eax);
+        break;
+
+    case 19:
+        timer_free((struct TIMER *)ebx);
         break;
     }
     return 0; // 正常返回

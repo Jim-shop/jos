@@ -18,6 +18,16 @@
 ; 13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
 ; 14. 关闭窗口（EBX=窗口句柄）
 ; 15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
+; 11. 窗口中画点（EBX=窗口句柄(最低bit为0则刷新窗口)，(ESI,EDI)=(x,y)，EAX=色号）
+; 12. 刷新窗口（EBX=窗口句柄，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)超尾）
+; 13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
+; 14. 关闭窗口（EBX=窗口句柄）
+; 15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
+; 16. 获取定时器alloc->EAX=定时器句柄
+; 17. 设置定时器的发送数据init（EBX=定时器句柄，EAX=数据）
+; 18. 定时器时间设定set（EBX=定时器句柄，EAX=时间）
+; 19. 释放定时器free（EBX=定时器句柄）
+
 
 [FORMAT "WCOFF"]                ; 生成对象文件的格式
 [INSTRSET "i486p"]              ; 486兼容指令集
@@ -38,6 +48,10 @@
     GLOBAL  _api_linewin
     GLOBAL  _api_closewin
     GLOBAL  _api_getkey
+    GLOBAL	_api_alloctimer
+    GLOBAL	_api_inittimer
+    GLOBAL	_api_settimer
+    GLOBAL	_api_freetimer
 
 [SECTION .text]
 
@@ -206,4 +220,35 @@ _api_getkey:		; int api_getkey(int mode);
     MOV		EDX, 15
     MOV		EAX, [ESP+4]
     INT		0x40
+    RET
+
+_api_alloctimer:	; int api_alloctimer(void);
+    MOV		EDX, 16
+    INT		0x40
+    RET
+
+_api_inittimer:		; void api_inittimer(int timer, int data);
+    PUSH	EBX
+    MOV		EDX, 17
+    MOV		EBX, [ESP+8]		; timer
+    MOV		EAX, [ESP+12]		; data
+    INT		0x40
+    POP		EBX
+    RET
+
+_api_settimer:		; void api_settimer(int timer, int time);
+    PUSH	EBX
+    MOV		EDX, 18
+    MOV		EBX, [ESP+8]		; timer
+    MOV		EAX, [ESP+12]		; time
+    INT		0x40
+    POP		EBX
+    RET
+
+_api_freetimer:		; void api_freetimer(int timer);
+    PUSH	EBX
+    MOV		EDX, 19
+    MOV		EBX, [ESP+8]		; timer
+    INT		0x40
+    POP		EBX
     RET

@@ -202,7 +202,7 @@ struct SHEET
     int vx0, vy0;       // 图层左上角的屏幕坐标
     int col_inv;        // 透明色色号
     int height;         // 高度
-    int flags;          // 其他设定
+    int flags;          // (bit0:FREE/USING,bit4:是否应用程序,bit5:有无光标)
     struct TASK *task;  // 来源任务
 };
 struct SHTCTL
@@ -229,9 +229,10 @@ void sheet_free(struct SHEET *const sht);
 #define MAX_TIMER 500
 struct TIMER
 {
-    struct TIMER *next;          // 下一个触发的timer
-    unsigned int timeout, flags; // timeout: 设定时刻（绝对时间）
-    struct FIFO32 *fifo;         // 一旦达到timeout，就往FIFO内发送data的数据
+    struct TIMER *next;   // 下一个触发的timer
+    unsigned int timeout; // timeout: 设定时刻（绝对时间）
+    char flags, flags2;   // flags标记运行状态，flags2用于标记是否需要自动取消
+    struct FIFO32 *fifo;  // 一旦达到timeout，就往FIFO内发送data的数据
     int data;
 };
 struct TIMERCTL
@@ -248,11 +249,13 @@ extern struct TIMERCTL timerctl;
 #define TIMER_FLAGS_ALLOC 1 // 状态：已配置
 #define TIMER_FLAGS_USING 2 // 状态：运行中
 void init_pit(void);
-void inthandler20(int *esp);
 struct TIMER *timer_alloc(void);
 void timer_free(struct TIMER *const timer);
 void timer_init(struct TIMER *const timer, struct FIFO32 *const fifo, unsigned int const data);
 void timer_settime(struct TIMER *const timer, unsigned int const timeout);
+int timer_cancel(struct TIMER *const timer);
+void timer_cancelall(struct FIFO32 const *const fifo);
+void inthandler20(int *esp);
 
 // mtask.c
 #define MAX_TASKS 1000    // 最大任务数
@@ -305,6 +308,7 @@ void task_idle(void);
 // window.c
 void make_window8(unsigned char *const buf, const int xsize, const int ysize, char const *const title, char const act);
 void make_wtitle8(unsigned char *const buf, const int xsize, char const *const title, char const act);
+void change_wtitle8(struct SHEET *const sht, const char act);
 void make_textbox8(struct SHEET *const sht, const int x0, const int y0, const int sx, const int sy, const int c);
 void putfont8_sht(struct SHEET *const sht, const int x, const int y, const int c, const int b, const char ch);
 void putfonts8_asc_sht(struct SHEET *const sht, const int x, const int y, const int c, const int b, char const *const s, const int l);

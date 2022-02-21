@@ -75,7 +75,7 @@ jos.sys: asmhead.bin bootpack.je Makefile
 
 ### ´ò°ü¾µÏñ
 
-JE := loop.je winhelo.je winhelo2.je winhelo3.je star1.je stars.je stars2.je lines.je walk.je
+JE := loop.je winhelo.je winhelo2.je winhelo3.je star1.je stars.je stars2.je lines.je walk.je noodle.je
 $(IMG): ipl.bin jos.sys Makefile $(JE)
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \

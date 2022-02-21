@@ -44,6 +44,7 @@ struct TIMER *timer_alloc(void)
         if (timerctl.timers0[i].flags == TIMER_FLAGS_FREE)
         {
             timerctl.timers0[i].flags = TIMER_FLAGS_ALLOC;
+            timerctl.timers0[i].flags2 = 0;
             return &timerctl.timers0[i];
         }
     return NULL;
@@ -102,6 +103,64 @@ void timer_settime(struct TIMER *const timer, unsigned int const timeout)
         }
     }
     // 除非哨兵出问题，否则应该到不了这里
+}
+
+int timer_cancel(struct TIMER *const timer)
+{
+    /*
+    取消定时器定时。
+    返回1表示处理成功，0表示不需要处理。
+    */
+    struct TIMER *t;
+    int eflags = io_load_eflags();
+    io_cli();
+    if (timer->flags == TIMER_FLAGS_USING)
+    {
+        if (timer == timerctl.t0) // 如果是第一个定时器
+        {
+            t = timer->next;
+            timerctl.t0 = t;
+            timerctl.next = t->timeout;
+        }
+        else // 如果不是第一个，就要找到前一个定时器
+        {
+            t = timerctl.t0;
+            for (;;)
+            {
+                if (t->next == timer)
+                    break;
+                t = t->next;
+            }
+            t->next = timer->next;
+        }
+        timer->flags = TIMER_FLAGS_ALLOC;
+        io_store_eflags(eflags);
+        return 1; // 成功
+    }
+    io_store_eflags(eflags);
+    return 0; // 不需要取消处理
+}
+
+void timer_cancelall(struct FIFO32 const *const fifo)
+{
+    /*
+    取消以fifo为缓冲区的所有具有自动取消属性的timer。
+    */
+    struct TIMER *t;
+    int eflags = io_load_eflags();
+    io_cli();
+    int i;
+    for (i = 0; i < MAX_TIMER; i++)
+    {
+        t = &timerctl.timers0[i];
+        if (t->flags != TIMER_FLAGS_FREE && t->flags2 != 0 && t->fifo == fifo)
+        {
+            timer_cancel(t);
+            timer_free(t);
+        }
+    }
+    io_store_eflags(eflags);
+    return;
 }
 
 void inthandler20(int *esp)
