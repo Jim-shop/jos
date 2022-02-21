@@ -26,9 +26,9 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     cons.cur_x = 8;
     cons.cur_y = 28;
     cons.cur_c = -1;
-    struct TIMER *timer = timer_alloc();
-    timer_init(timer, &task->fifo, 1);
-    timer_settime(timer, 50);
+    cons.timer = timer_alloc();
+    timer_init(cons.timer, &task->fifo, 1);
+    timer_settime(cons.timer, 50);
 
     // 暂存指令
     char cmdline[30];
@@ -61,17 +61,17 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
             case 0 ... 1: // 光标闪烁
                 if (i != 0)
                 {
-                    timer_init(timer, &task->fifo, 0);
+                    timer_init(cons.timer, &task->fifo, 0);
                     if (cons.cur_c >= 0)
                         cons.cur_c = white;
                 }
                 else
                 {
-                    timer_init(timer, &task->fifo, 1);
+                    timer_init(cons.timer, &task->fifo, 1);
                     if (cons.cur_c >= 0)
                         cons.cur_c = black;
                 }
-                timer_settime(timer, 50);
+                timer_settime(cons.timer, 50);
                 break;
 
             case 2: // 光标ON
@@ -281,7 +281,16 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
             set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int)q, AR_DATA32_RW + 0x60); // 应用程序权限
             for (i = 0; i < data_size; i++)
                 q[esp + i] = p[data_je + i];
-            start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task_now()->tss.esp0)); // 从主函数开始执行
+            struct TASK *task = task_now();
+            start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0)); // 从主函数开始执行
+            struct SHTCTL *shtctl = (struct SHTCTL *)*((int *)0x0fe4);
+            struct SHEET *sht;
+            for (i = 0; i < MAX_SHEETS; i++)
+            {
+                sht = &(shtctl->sheets0[i]);
+                if (sht->flags != 0 && sht->task == task)
+                    sheet_free(sht); // 释放被应用程序遗留的窗口
+            }
             memman_free_4k(memman, (unsigned int)q, seg_size);
         }
         else
@@ -385,19 +394,29 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     3. 显示某长度字符串（EBX=字符串地址，ECX=字符串长度）
     4. 结束应用程序
     5. 显示窗口（EBX=窗口缓冲区，ESI=窗口x大小，EDI=窗口y大小，EAX=透明色，ECX=窗口名称）->EAX=窗口句柄
-    6. 窗口中叠写字符串（EBX=窗口句柄，(ESI,EDI)=(x,y)，EAX=色号，ECX=字符串长度，EBP=字符串）
-    7. 窗口中绘制方块（EBX=窗口句柄，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
+    6. 窗口中叠写字符串（EBX=窗口句柄(最低bit为0则刷新窗口)，(ESI,EDI)=(x,y)，EAX=色号，ECX=字符串长度，EBP=字符串）
+    7. 窗口中绘制方块（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
+    8. memman初始化（EBX=memman地址，EAX=空间地址，ECX=空间大小）
+    9. malloc（EBX=memman地址，ECX=请求字节数）->EAX=分配到的内存地址
+    10. free（EBX=memman地址，EAX=释放的地址，ECX=释放字节数）
+    11. 窗口中画点（EBX=窗口句柄(最低bit为0则刷新窗口)，(ESI,EDI)=(x,y)，EAX=色号）
+    12. 刷新窗口（EBX=窗口句柄，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)超尾）
+    13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
+    14. 关闭窗口（EBX=窗口句柄）
+    15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
     */
     int ds_base = *((int *)0xfe8);
     struct TASK *task = task_now();
     struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
     struct SHTCTL *const shtctl = (struct SHTCTL *const)*((int *)0x0fe4);
-    struct SHEET *sht;
     int *reg = &eax + 1; // eax的后一个位置，即第一次PUSHAD储存的位置。修改它达到返回值效果
     /*
     reg[0] : EDI,   reg[1] : ESI,   reg[2] : EBP,   reg[3] : ESP
     reg[4] : EBX,   reg[5] : EDX,   reg[6] : ECX,   reg[7] : EAX
     */
+
+    struct SHEET *sht;
+    int i;
     switch (edx)
     {
     case 1:
@@ -418,26 +437,156 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
 
     case 5:
         sht = sheet_alloc(shtctl);
+        sht->task = task;
         sheet_setbuf(sht, (char *)ebx + ds_base, esi, edi, eax);
         make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
         sheet_slide(sht, 100, 50);
-        sheet_updown(sht, 3);
+        sheet_updown(sht, 3); // 比task_a还高
         reg[7] = (int)sht;
         break;
 
     case 6:
-        sht = (struct SHEET *)ebx;
+        sht = (struct SHEET *)(ebx & 0xfffffffe); // 忽略EBX最低bit
         putfonts8_asc(sht->buf, sht->bxsize, esi, edi, eax, (char *)ebp + ds_base);
-        sheet_refresh(sht, esi, edi, esi + ecx * 8, edi + 16);
+        if ((ebx & 1) == 0) // EBX最低bit为0则刷新窗口
+            sheet_refresh(sht, esi, edi, esi + ecx * 8, edi + 16);
         break;
 
     case 7:
-        sht = (struct SHEET *)ebx;
+        sht = (struct SHEET *)(ebx & 0xfffffffe); // 忽略EBX最低bit
         boxfill8(sht->buf, sht->bxsize, ebp, eax, ecx, esi, edi);
-        sheet_refresh(sht, eax, ecx, esi + 1, edi + 1); // 超尾
+        if ((ebx & 1) == 0)                                 // EBX最低bit为0则刷新窗口
+            sheet_refresh(sht, eax, ecx, esi + 1, edi + 1); // 超尾
+        break;
+
+    case 8:
+        memman_init((struct MEMMAN *)(ebx + ds_base));
+        ecx &= 0xfffffff0; // 16字节为单位
+        memman_free((struct MEMMAN *)(ebx + ds_base), eax, ecx);
+        break;
+
+    case 9:
+        ecx = (ecx + 0x0f) & 0xfffffff0; // 上取整到16字节
+        reg[7] = memman_alloc((struct MEMMAN *)(ebx + ds_base), ecx);
+        break;
+
+    case 10:
+        ecx = (ecx + 0x0f) & 0xfffffff0; // 上取整到16字节
+        memman_free((struct MEMMAN *)(ebx + ds_base), eax, ecx);
+        break;
+
+    case 11:
+        sht = (struct SHEET *)(ebx & 0xfffffffe); // 忽略EBX最低bit
+        sht->buf[sht->bxsize * edi + esi] = eax;
+        if ((ebx & 1) == 0)                                 // EBX 最低bit为0则刷新窗口
+            sheet_refresh(sht, esi, edi, esi + 1, edi + 1); // 超尾
+        break;
+
+    case 12:
+        sht = (struct SHEET *)ebx;
+        sheet_refresh(sht, eax, ecx, esi, edi); // 超尾
+        break;
+
+    case 13:
+        sht = (struct SHEET *)(ebx & 0xfffffffe); // 忽略EBX最低bit
+        je_api_linewin(sht, eax, ecx, esi, edi, ebp);
+        if ((ebx & 1) == 0)                                 // EBX最低bit为0则刷新窗口
+            sheet_refresh(sht, eax, ecx, esi + 1, edi + 1); // 超尾
+        break;
+
+    case 14:
+        sheet_free((struct SHEET *)ebx);
+        break;
+
+    case 15:
+        for (;;)
+        {
+            io_cli();
+            if (fifo32_status(&task->fifo) == 0)
+            {
+                if (eax) // 阻塞模式
+                    task_sleep(task);
+                else
+                {
+                    io_sti();
+                    reg[7] = -1;
+                    return 0;
+                }
+            }
+            i = fifo32_get(&task->fifo);
+            io_sti();
+            switch (i)
+            {
+            case 0 ... 1: // 光标用定时器
+                // 应用程序运行时不需要光标，所以不需要闪
+                timer_init(cons->timer, &task->fifo, 1);
+                timer_settime(cons->timer, 50);
+                break;
+
+            case 2: // 光标ON
+                cons->cur_c = white;
+                break;
+
+            case 3: // 光标OFF
+                cons->cur_c = -1;
+                break;
+
+            case 256 ... 511: // 键盘数据（taskA传过来的）
+                reg[7] = i - 256;
+                return 0;
+                break;
+            }
+        }
         break;
     }
     return 0; // 正常返回
+}
+
+void je_api_linewin(struct SHEET *const sht, const int x0, const int y0, const int x1, const int y1, const int col)
+{
+    /*
+    je_api()子模块。在窗口上画线。精度为1/1024
+    */
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    int x = x0 << 10;
+    int y = y0 << 10;
+    if (dx < 0)
+        dx = -dx;
+    if (dy < 0)
+        dy = -dy; // x,y方向总增量
+    int len;      // 将x,y方向中变化较大的作为len
+    if (dx >= dy) // x,y方向步进
+    {
+        len = dx + 1; // 防止线长度为0时画不出点
+        if (x0 <= x1)
+            dx = 1024;
+        else
+            dx = -1024;
+        if (y0 <= y1)
+            dy = ((y1 - y0 + 1) << 10) / len;
+        else
+            dy = ((y1 - y0 - 1) << 10) / len;
+    }
+    else
+    {
+        len = dy + 1;
+        if (y0 <= y1)
+            dy = 1024;
+        else
+            dy = -1024;
+        if (x0 <= x1)
+            dx = ((x1 - x0 + 1) << 10) / len;
+        else
+            dx = ((x1 - x0 - 1) << 10) / len;
+    }
+    int i;
+    for (i = 0; i < len; i++)
+    {
+        sht->buf[(y >> 10) * sht->bxsize + (x >> 10)] = col;
+        x += dx;
+        y += dy;
+    }
 }
 
 /*

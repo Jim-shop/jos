@@ -203,6 +203,7 @@ struct SHEET
     int col_inv;        // 透明色色号
     int height;         // 高度
     int flags;          // 其他设定
+    struct TASK *task;  // 来源任务
 };
 struct SHTCTL
 {                                     // 图层管理
@@ -328,6 +329,7 @@ struct CONSOLE
 {
     struct SHEET *sht;
     int cur_x, cur_y, cur_c;
+    struct TIMER *timer;
 };
 extern struct FILEINFO *const finfo;
 void console_task(struct SHEET *const sheet, unsigned int const memtotal);
@@ -342,6 +344,7 @@ void cmd_cls(struct CONSOLE *const cons);
 void cmd_dir(struct CONSOLE *const cons);
 void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
 int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
+void je_api_linewin(struct SHEET *const sht, const int x0, const int y0, const int x1, const int y1, const int col);
 int *inthandler0c(int *esp);
 int *inthandler0d(int *esp);
 
