@@ -23,9 +23,12 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     cons.cur_x = 8;
     cons.cur_y = 28;
     cons.cur_c = -1;
-    cons.timer = timer_alloc();
-    timer_init(cons.timer, &task->fifo, 1);
-    timer_settime(cons.timer, 50);
+    if (sheet != NULL)
+    {
+        cons.timer = timer_alloc();
+        timer_init(cons.timer, &task->fifo, 1);
+        timer_settime(cons.timer, 50);
+    }
     task->cons = &cons;
 
     // 暂存指令
@@ -98,6 +101,8 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
                     cmdline[cons.cur_x / 8 - 2] = 0; // 字串结束标志
                     cons_newline(&cons);
                     cons_runcmd(cmdline, &cons, fat, memtotal);
+                    if (sheet == NULL)
+                        cmd_exit(&cons, fat);
                     cons_putchar(&cons, '>', 1); // 显示提示符
                     break;
 
@@ -125,18 +130,21 @@ void cons_newline(struct CONSOLE *const cons)
     给控制台换行并回车。行满时滚动。
     使用前记得把光标擦除。
     */
-    int x, y;
-    if (cons->cur_y < 28 + 112) // 没填满所有行
-        cons->cur_y += 16;      // 换行
-    else                        // 填满了所有行
+    if (cons->sht != NULL)
     {
-        for (y = 28; y < 28 + 112; y++)
-            for (x = 8; x < 8 + 240; x++)
-                cons->sht->buf[x + y * cons->sht->bxsize] = cons->sht->buf[x + (y + 16) * cons->sht->bxsize]; // 滚动
-        for (y = 28 + 112; y < 28 + 128; y++)
-            for (x = 8; x < 8 + 240; x++)
-                cons->sht->buf[x + y * cons->sht->bxsize] = black; // 清空
-        sheet_refresh(cons->sht, 8, 28, 8 + 240, 28 + 128);
+        int x, y;
+        if (cons->cur_y < 28 + 112) // 没填满所有行
+            cons->cur_y += 16;      // 换行
+        else                        // 填满了所有行
+        {
+            for (y = 28; y < 28 + 112; y++)
+                for (x = 8; x < 8 + 240; x++)
+                    cons->sht->buf[x + y * cons->sht->bxsize] = cons->sht->buf[x + (y + 16) * cons->sht->bxsize]; // 滚动
+            for (y = 28 + 112; y < 28 + 128; y++)
+                for (x = 8; x < 8 + 240; x++)
+                    cons->sht->buf[x + y * cons->sht->bxsize] = black; // 清空
+            sheet_refresh(cons->sht, 8, 28, 8 + 240, 28 + 128);
+        }
     }
     cons->cur_x = 8;
     return;
@@ -153,7 +161,8 @@ void cons_putchar(struct CONSOLE *const cons, const char ch, const char move)
     case '\t':
         do
         {
-            putfont8_sht(cons->sht, cons->cur_x, cons->cur_y, white, black, ' ');
+            if (cons->sht != NULL)
+                putfont8_sht(cons->sht, cons->cur_x, cons->cur_y, white, black, ' ');
             cons->cur_x += 8;
             if (cons->cur_x == 8 + 240)
                 cons_newline(cons);
@@ -168,7 +177,8 @@ void cons_putchar(struct CONSOLE *const cons, const char ch, const char move)
         break; // 忽略
 
     default:
-        putfont8_sht(cons->sht, cons->cur_x, cons->cur_y, white, black, ch);
+        if (cons->sht != NULL)
+            putfont8_sht(cons->sht, cons->cur_x, cons->cur_y, white, black, ch);
         if (move)
         {
             cons->cur_x += 8;
@@ -206,18 +216,20 @@ void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned
     /*
     识别控制台输入的指令，调用相应处理函数或程序。
     */
-    if (strcmp(cmdline, "mem") == 0)
+    if (strcmp(cmdline, "mem") == 0 && cons->sht != NULL)
         cmd_mem(cons, memtotal);
-    else if (strcmp(cmdline, "cls") == 0)
+    else if (strcmp(cmdline, "cls") == 0 && cons->sht != NULL)
         cmd_cls(cons);
-    else if (strcmp(cmdline, "dir") == 0)
+    else if (strcmp(cmdline, "dir") == 0 && cons->sht != NULL)
         cmd_dir(cons);
-    else if (strncmp(cmdline, "type ", 5) == 0)
+    else if (strncmp(cmdline, "type ", 5) == 0 && cons->sht != NULL)
         cmd_type(cons, fat, cmdline);
     else if (strcmp(cmdline, "exit") == 0)
         cmd_exit(cons, fat);
     else if (strncmp(cmdline, "start ", 6) == 0)
         cmd_start(cons, cmdline, memtotal);
+    else if (strncmp(cmdline, "ncst ", 5) == 0)
+        cmd_ncst(cons, cmdline, memtotal);
     else if (cmdline[0] != 0)                 // 不是内置命令也不是空行
         if (cmd_app(cons, fat, cmdline) == 0) // 也不是程序
             cons_putstr0(cons, "Wrong instruction or application name.\n\n");
@@ -394,10 +406,14 @@ void cmd_exit(struct CONSOLE const *const cons, short const *const fat)
     struct TASK *task = task_now();
     struct SHTCTL *shtctl = (struct SHTCTL *)*((int *)0x0fe4);
     struct FIFO32 *fifo = (struct FIFO32 *)*((int *)0x0fec); // task_a的
-    timer_cancel(cons->timer);
+    if (cons->sht != NULL)
+        timer_cancel(cons->timer);
     memman_free_4k(memman, (int)fat, 4 * 2880);
     io_cli();
-    fifo32_put(fifo, cons->sht - shtctl->sheets0 + 768); // 768~1023
+    if (cons->sht != NULL)
+        fifo32_put(fifo, cons->sht - shtctl->sheets0 + 768); // 768~1023
+    else
+        fifo32_put(fifo, task - taskctl->tasks0 + 1024); // 1024~2023
     io_sti();
     for (;;)
         task_sleep(task);
@@ -415,6 +431,21 @@ void cmd_start(struct CONSOLE *const cons, char const *cmdline, const int memtot
     sheet_slide(sht, 32, 4);
     sheet_updown(sht, shtctl->top);
     for (cmdline += 6; *cmdline != 0; cmdline++)
+        fifo32_put(fifo, *cmdline + 256);
+    fifo32_put(fifo, '\n' + 256);
+    cons_newline(cons);
+    return;
+}
+
+void cmd_ncst(struct CONSOLE *const cons, char const *cmdline, const int memtotal)
+{
+    /*
+    给控制台提供ncst指令（no console start）。
+    指令功能：另起一个控制台，传递start后面的指令，但不显示控制台。
+    */
+    struct TASK *task = open_constask(NULL, memtotal);
+    struct FIFO32 *fifo = &task->fifo;
+    for (cmdline += 5; *cmdline != 0; cmdline++)
         fifo32_put(fifo, *cmdline + 256);
     fifo32_put(fifo, '\n' + 256);
     cons_newline(cons);
