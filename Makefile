@@ -67,15 +67,15 @@ jos.sys: asmhead.bin bootpack.je Makefile
 
 ### 应用
 
-%.bim: %.obj a_nask.obj Makefile
-	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj a_nask.obj
+%.bim: %.obj api.obj Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj api.obj
 %.je: %.bim Makefile
-	@$(BIM2HRB) $*.bim $*.je 0
+	@$(BIM2HRB) $*.bim $*.je 100k
 
 
 ### 打包镜像
 
-JE := loop.je winhelo.je winhelo2.je winhelo3.je star1.je stars.je stars2.je lines.je walk.je noodle.je
+JE := a.je loop.je winhelo.je winhelo2.je winhelo3.je star1.je stars.je stars2.je lines.je walk.je noodle.je beepdown.je color.je color2.je
 $(IMG): ipl.bin jos.sys Makefile $(JE)
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:ipl.bin len:512 from:0 to:0 \
@@ -87,10 +87,10 @@ $(IMG): ipl.bin jos.sys Makefile $(JE)
 ####### 指令
 
 clean:
-	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj
+	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys *.je
 
 clean_all: clean
-	-@del *.img *.vfd *.sys *.je
+	-@del *.img *.vfd
 
 img: $(IMG)
 

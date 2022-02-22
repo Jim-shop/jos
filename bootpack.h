@@ -55,7 +55,7 @@ extern struct MEMMAN *const memman;
 
 // graphic.c
 void init_palette(void);
-void set_palette(int start, const int end, unsigned char *rgb);
+void set_palette(int start, const int end, unsigned char const *rgb);
 void boxfill8(unsigned char *const vram, const int xsize, unsigned char const c, int const x0, int y0, int const x1, int const y1);
 void init_screen8(unsigned char *const vram, int const x, int const y);
 void putfont8(unsigned char *const vram, int const xsize, int const x, int const y, char const c, char const *const font);
@@ -275,6 +275,8 @@ struct TASK
     int level, priority; // 优先级、每片时长
     struct FIFO32 fifo;
     struct TSS32 tss;
+    struct CONSOLE *cons; // 用于区分console
+    int ds_base;          // 用于区分console
 };
 struct TASKLEVEL
 {

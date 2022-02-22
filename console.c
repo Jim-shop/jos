@@ -17,11 +17,7 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     // 自身task
     struct TASK *task = task_now();
 
-    // 事件队列
-    int fifobuf[128];
-    fifo32_init(&task->fifo, 128, fifobuf, task);
-
-    // 光标
+    // 状态信息
     struct CONSOLE cons;
     cons.sht = sheet;
     cons.cur_x = 8;
@@ -30,6 +26,7 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     cons.timer = timer_alloc();
     timer_init(cons.timer, &task->fifo, 1);
     timer_settime(cons.timer, 50);
+    task->cons = &cons;
 
     // 暂存指令
     char cmdline[30];
@@ -37,9 +34,6 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     // fat表 0柱面0磁头2~9扇区第一份10~18第二份（两份完全相同）
     unsigned short *const fat = (unsigned short *const)memman_alloc_4k(memman, 2 * 2880); // 共2880扇区
     file_readfat(fat, (unsigned char *)(ADR_DISKIMG + 0x000200));
-
-    // 传递cons给API接口
-    *((int *)0x0fec) = (int)&cons;
 
     // 提示符
     cons_putchar(&cons, '>', 1);
@@ -227,6 +221,7 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
     /*
     查找以cmdline为文件名的je程序执行。找不到返回0，执行成功返回1
     */
+    struct TASK *task = task_now();
     char name[18];
     int i;
     // 生成文件名
@@ -253,8 +248,8 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
         1*8: 操作系统数据段
         2*8: 操作系统代码段
         3*8~1002*8: TSS
-        1003*8: 应用程序代码段
-        1004*8: 应用程序数据段
+        1003*8~2002*8: 应用程序代码段
+        2003*8~3002*8: 应用程序数据段
         */
         char *const p = (char *)memman_alloc_4k(memman, f->size); // 应用程序代码段
         file_loadfile(f->clustno, f->size, p, fat, (char *)(ADR_DISKIMG + 0x3e00));
@@ -276,14 +271,13 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
             int esp = *((int *)(p + 0x000c));
             int data_size = *((int *)(p + 0x0010));
             int data_je = *((int *)(p + 0x0014));
-            char *q = (char *)memman_alloc_4k(memman, seg_size);                  // 应用程序数据段
-            *((int *)0xfe8) = (int)q;                                             // 传递段号给API
-            set_segmdesc(gdt + 1003, f->size - 1, (int)p, AR_CODE32_ER + 0x60);   // 应用程序权限
-            set_segmdesc(gdt + 1004, 64 * 1024 - 1, (int)q, AR_DATA32_RW + 0x60); // 应用程序权限
+            char *q = (char *)memman_alloc_4k(memman, seg_size);                                 // 应用程序数据段
+            task->ds_base = (int)q;                                                              // 传递段号给API
+            set_segmdesc(gdt + 1000 + task->sel / 8, f->size - 1, (int)p, AR_CODE32_ER + 0x60);  // 应用程序权限
+            set_segmdesc(gdt + 2000 + task->sel / 8, seg_size - 1, (int)q, AR_DATA32_RW + 0x60); // 应用程序权限
             for (i = 0; i < data_size; i++)
                 q[esp + i] = p[data_je + i];
-            struct TASK *task = task_now();
-            start_app(0x1b, 1003 * 8, esp, 1004 * 8, &(task->tss.esp0)); // 从主函数开始执行
+            start_app(0x1b, 1000 * 8 + task->sel, esp, 2000 * 8 + task->sel, &(task->tss.esp0)); // 从主函数开始执行
             struct SHTCTL *shtctl = (struct SHTCTL *)*((int *)0x0fe4);
             struct SHEET *sht;
             for (i = 0; i < MAX_SHEETS; i++)
@@ -405,15 +399,16 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     12. 刷新窗口（EBX=窗口句柄，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)超尾）
     13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
     14. 关闭窗口（EBX=窗口句柄）
-    15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
+    15. 获取键盘/定时器输入（EAX={0:不阻塞，没有输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
     16. 获取定时器alloc->EAX=定时器句柄
     17. 设置定时器的发送数据init（EBX=定时器句柄，EAX=数据）
     18. 定时器时间设定set（EBX=定时器句柄，EAX=时间）
     19. 释放定时器free（EBX=定时器句柄）
+    20. 蜂鸣器发声（EAX=声音频率mHz,0表示停止发声）
     */
-    int ds_base = *((int *)0xfe8);
     struct TASK *task = task_now();
-    struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
+    int ds_base = task->ds_base;
+    struct CONSOLE *const cons = task->cons;
     struct SHTCTL *const shtctl = (struct SHTCTL *const)*((int *)0x0fe4);
     int *reg = &eax + 1; // eax的后一个位置，即第一次PUSHAD储存的位置。修改它达到返回值效果
     /*
@@ -447,8 +442,8 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
         sht->flags |= 0x10; // 是应用程序窗口
         sheet_setbuf(sht, (char *)ebx + ds_base, esi, edi, eax);
         make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
-        sheet_slide(sht, 100, 50);
-        sheet_updown(sht, 3); // 比task_a还高
+        sheet_slide(sht, (shtctl->xsize - esi) / 2, (shtctl->ysize - edi) / 2); // 居中
+        sheet_updown(sht, shtctl->top);                                         // 移动到顶层。鼠标自动上移
         reg[7] = (int)sht;
         break;
 
@@ -565,6 +560,30 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     case 19:
         timer_free((struct TIMER *)ebx);
         break;
+
+    case 20:
+        /*
+        蜂鸣器由PIT控制。
+            音高操作：
+        1. AL=0xb6, OUT(0x43, AL)
+        2. AL=设定值低8位, OUT(0x42, AL)
+        3. AL=设定值高8位, OUT(0x42, AL)
+        -> 设定值为0当作65536.
+        -> 发生的音高为PIT时钟频率(1193181Hz)除以设定值
+            蜂鸣器开关控制：
+        ON:  IN(AL, 0x61), AL|=0x03, AL&=0x0f, OUT(0x61, AL)
+        OFF: IN(AL, 0x61), AL&=0x0d, OUT(0x61, AL)
+        */
+        if (eax == 0) // 关闭蜂鸣器
+            io_out8(0x61, io_in8(0x61) & 0x0d);
+        else
+        {
+            i = 1193181000 / eax;
+            io_out8(0x43, 0xb6);
+            io_out8(0x42, i & 0xff);
+            io_out8(0x42, i >> 8);
+            io_out8(0x61, (io_in8(0x61) | 0x03) & 0x0f);
+        }
     }
     return 0; // 正常返回
 }
@@ -645,11 +664,12 @@ int *inthandler0c(int *esp)
     强制结束程序并打印错误提醒。
     */
     char s[30];
-    struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
+    struct TASK *const task = task_now();
+    struct CONSOLE *const cons = task->cons;
     cons_putstr0(cons, "\nINT 0C:\nStack Exception.\n");
     sprintf(s, "EIP = %08X\n", esp[11]); // 栈的第11号元素（EIP）
     cons_putstr0(cons, s);
-    return &(task_now()->tss.esp0); // 强制结束程序
+    return &(task->tss.esp0); // 强制结束程序
 }
 
 int *inthandler0d(int *esp)
@@ -659,9 +679,10 @@ int *inthandler0d(int *esp)
     强制结束程序并打印错误提醒。
     */
     char s[30];
-    struct CONSOLE *const cons = (struct CONSOLE *const)*((int *)0x0fec);
+    struct TASK *const task = task_now();
+    struct CONSOLE *const cons = task->cons;
     cons_putstr0(cons, "\nINT 0D:\nGeneral Protected Exception.\n");
     sprintf(s, "EIP = %08X\n", esp[11]); // 栈的第11号元素（EIP）
     cons_putstr0(cons, s);
-    return &(task_now()->tss.esp0); // 强制结束程序
+    return &(task->tss.esp0); // 强制结束程序
 }

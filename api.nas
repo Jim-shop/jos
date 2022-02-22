@@ -17,16 +17,12 @@
 ; 12. 刷新窗口（EBX=窗口句柄，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)超尾）
 ; 13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
 ; 14. 关闭窗口（EBX=窗口句柄）
-; 15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
-; 11. 窗口中画点（EBX=窗口句柄(最低bit为0则刷新窗口)，(ESI,EDI)=(x,y)，EAX=色号）
-; 12. 刷新窗口（EBX=窗口句柄，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)超尾）
-; 13. 窗口中画直线（EBX=窗口句柄(最低bit为0则刷新窗口)，(EAX,ECX)=(x0,y0)，(ESI,EDI)=(x1,y1)不超尾，EBP=色号）
-; 14. 关闭窗口（EBX=窗口句柄）
-; 15. 获取键盘输入（EAX={0:不阻塞，没有键盘输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
+; 15. 获取键盘/定时器输入（EAX={0:不阻塞，没有输入时返回-1; 1:阻塞}）->EAX=输入的字符编码
 ; 16. 获取定时器alloc->EAX=定时器句柄
 ; 17. 设置定时器的发送数据init（EBX=定时器句柄，EAX=数据）
 ; 18. 定时器时间设定set（EBX=定时器句柄，EAX=时间）
 ; 19. 释放定时器free（EBX=定时器句柄）
+; 20. 蜂鸣器发声（EAX=声音频率mHz,0表示停止发声）
 
 
 [FORMAT "WCOFF"]                ; 生成对象文件的格式
@@ -52,6 +48,7 @@
     GLOBAL	_api_inittimer
     GLOBAL	_api_settimer
     GLOBAL	_api_freetimer
+    GLOBAL	_api_beep
 
 [SECTION .text]
 
@@ -132,9 +129,9 @@ _api_initmalloc:	; void api_initmalloc(void);
     MOV     EDX, 8
     MOV     EBX, [CS:0x0020]    ; 程序格式文件中malloc内存空间的地址
     MOV     EAX, EBX
-    ADD     EAX, 32*1024        ; +32KB
+    ADD     EAX, 32*1024        ; +32KB用来存放malloc表
     MOV     ECX, [CS:0X0000]    ; 程序文件格式中数据段的大小
-    SUB     ECX, EAX
+    SUB     ECX, EAX            ; 减掉malloc表占用的大小
     INT     0X40
     POP     EBX
     RET
@@ -252,3 +249,10 @@ _api_freetimer:		; void api_freetimer(int timer);
     INT		0x40
     POP		EBX
     RET
+
+_api_beep:			; void api_beep(int tone);
+    MOV		EDX, 20
+    MOV		EAX, [ESP+4]		
+    INT		0x40
+    RET
+
