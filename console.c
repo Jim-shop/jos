@@ -78,6 +78,10 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
                 cons.cur_c = -1;
                 break;
 
+            case 4: // 退出
+                cmd_exit(&cons, fat);
+                break;
+
             case 256 ... 511: // 键盘数据（从任务A得到）
                 switch (i)
                 {
@@ -210,6 +214,10 @@ void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned
         cmd_dir(cons);
     else if (strncmp(cmdline, "type ", 5) == 0)
         cmd_type(cons, fat, cmdline);
+    else if (strcmp(cmdline, "exit") == 0)
+        cmd_exit(cons, fat);
+    else if (strncmp(cmdline, "start ", 6) == 0)
+        cmd_start(cons, cmdline, memtotal);
     else if (cmdline[0] != 0)                 // 不是内置命令也不是空行
         if (cmd_app(cons, fat, cmdline) == 0) // 也不是程序
             cons_putstr0(cons, "Wrong instruction or application name.\n\n");
@@ -377,6 +385,42 @@ void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char 
     return;
 }
 
+void cmd_exit(struct CONSOLE const *const cons, short const *const fat)
+{
+    /*
+    给控制台提供exit指令。
+    指令功能：释放内存空间，通知task_a()进一步处理。
+    */
+    struct TASK *task = task_now();
+    struct SHTCTL *shtctl = (struct SHTCTL *)*((int *)0x0fe4);
+    struct FIFO32 *fifo = (struct FIFO32 *)*((int *)0x0fec); // task_a的
+    timer_cancel(cons->timer);
+    memman_free_4k(memman, (int)fat, 4 * 2880);
+    io_cli();
+    fifo32_put(fifo, cons->sht - shtctl->sheets0 + 768); // 768~1023
+    io_sti();
+    for (;;)
+        task_sleep(task);
+}
+
+void cmd_start(struct CONSOLE *const cons, char const *cmdline, const int memtotal)
+{
+    /*
+    给控制台提供start指令。
+    指令功能：另起一个控制台，传递start后面的指令。
+    */
+    struct SHTCTL *shtctl = (struct SHTCTL *)*((int *)0x0fe4);
+    struct SHEET *sht = open_console(shtctl, memtotal);
+    struct FIFO32 *fifo = &sht->task->fifo;
+    sheet_slide(sht, 32, 4);
+    sheet_updown(sht, shtctl->top);
+    for (cmdline += 6; *cmdline != 0; cmdline++)
+        fifo32_put(fifo, *cmdline + 256);
+    fifo32_put(fifo, '\n' + 256);
+    cons_newline(cons);
+    return;
+}
+
 int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax)
 {
     /*
@@ -442,8 +486,8 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
         sht->flags |= 0x10; // 是应用程序窗口
         sheet_setbuf(sht, (char *)ebx + ds_base, esi, edi, eax);
         make_window8((char *)ebx + ds_base, esi, edi, (char *)ecx + ds_base, 0);
-        sheet_slide(sht, (shtctl->xsize - esi) / 2, (shtctl->ysize - edi) / 2); // 居中
-        sheet_updown(sht, shtctl->top);                                         // 移动到顶层。鼠标自动上移
+        sheet_slide(sht, ((shtctl->xsize - esi) / 2) & ~3, (shtctl->ysize - edi) / 2); // 居中，x方向对齐到4，加快运算
+        sheet_updown(sht, shtctl->top);                                                // 移动到顶层。鼠标自动上移
         reg[7] = (int)sht;
         break;
 

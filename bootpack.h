@@ -49,10 +49,6 @@ extern const char font[4096];
 #include <stdio.h>
 #include <string.h>
 
-// bootpack.c
-#define KEYCMD_LED 0xed // 键盘灯设置端口
-extern struct MEMMAN *const memman;
-
 // graphic.c
 void init_palette(void);
 void set_palette(int start, const int end, unsigned char const *rgb);
@@ -275,8 +271,8 @@ struct TASK
     int level, priority; // 优先级、每片时长
     struct FIFO32 fifo;
     struct TSS32 tss;
-    struct CONSOLE *cons; // 用于区分console
-    int ds_base;          // 用于区分console
+    struct CONSOLE *cons;    // 用于区分console
+    int ds_base, cons_stack; // 用于区分console
 };
 struct TASKLEVEL
 {
@@ -349,9 +345,19 @@ void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal);
 void cmd_cls(struct CONSOLE *const cons);
 void cmd_dir(struct CONSOLE *const cons);
 void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
+void cmd_exit(struct CONSOLE const *const cons, short const *const fat);
+void cmd_start(struct CONSOLE *const cons, char const *cmdline, const int memtotal);
 int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int eax);
 void je_api_linewin(struct SHEET *const sht, const int x0, const int y0, const int x1, const int y1, const int col);
 int *inthandler0c(int *esp);
 int *inthandler0d(int *esp);
+
+// bootpack.c
+#define KEYCMD_LED 0xed // 键盘灯设置端口
+extern struct MEMMAN *const memman;
+struct SHEET *open_console(struct SHTCTL *const shtctl, unsigned int const memtotal);
+#define MOUSE_DRAG_IDLE -1   // 未处于拖动状态
+#define MOUSE_DRAG_IGNORE -2 // 处于拖动状态，但无视
+#define WIN_MOVE_IDLE 0x7fffffff
 
 #endif

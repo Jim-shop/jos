@@ -166,6 +166,8 @@ void sheet_refreshsub(struct SHTCTL const *const ctl, int vx0, int vy0, int vx1,
     unsigned char *buf;
     unsigned char sid;
 
+    char *pmap, *pvram, *pbuf;
+
     if (vx0 < 0)
         vx0 = 0;
     if (vy0 < 0)
@@ -194,14 +196,60 @@ void sheet_refreshsub(struct SHTCTL const *const ctl, int vx0, int vy0, int vx1,
         if (by1 > sht->bysize)
             by1 = sht->bysize;
 
-        for (by = by0; by < by1; by++)
+        if ((sht->vx0 & 3) == 0) // 先前4对齐了（证明很有可能可以进行快速处理）
         {
-            vy = sht->vy0 + by;
-            for (bx = bx0; bx < bx1; bx++)
+            int i = (bx0 + 3) / 4; // 小数进位
+            int j = bx1 / 4 - i;   // 小数舍去
+            int sid4 = sid | sid << 8 | sid << 16 | sid << 24;
+            int *pmap4, *pvram4, *pbuf4;
+            int bx2;
+            for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
             {
-                vx = sht->vx0 + bx;
-                if (map[vy * ctl->xsize + vx] == sid)
-                    vram[vy * ctl->xsize + vx] = buf[by * sht->bxsize + bx];
+                pmap = &map[vy * ctl->xsize];
+                pvram = &vram[vy * ctl->xsize];
+                pbuf = &buf[by * sht->bxsize];
+                // 前面被4除多余的部分逐个字节写入
+                for (bx = bx0, vx = sht->vx0 + bx0; bx < bx1 && (bx & 3) != 0; bx++, vx++)
+                    if (pmap[vx] == sid)
+                        pvram[vx] = pbuf[bx];
+                // 4倍数部分
+                pmap4 = (int *)&map[vy * ctl->xsize + vx];
+                pvram4 = (int *)&vram[vy * ctl->xsize + vx];
+                pbuf4 = (int *)&buf[by * sht->bxsize + bx];
+                for (i = 0; i < j; i++)
+                {
+                    if (pmap4[i] == sid4)
+                        pvram4[i] = pbuf4[i];
+                    else
+                    {
+                        bx2 = bx + i * 4;
+                        vx = sht->vx0 + bx2;
+                        if (pmap[vx + 0] == sid)
+                            pvram[vx + 0] = pbuf[bx2 + 0];
+                        if (pmap[vx + 1] == sid)
+                            pvram[vx + 1] = pbuf[bx2 + 1];
+                        if (pmap[vx + 2] == sid)
+                            pvram[vx + 2] = pbuf[bx2 + 2];
+                        if (pmap[vx + 3] == sid)
+                            pvram[vx + 3] = pbuf[bx2 + 3];
+                    }
+                }
+                // 后面被4除多余的部分逐个字节写入
+                for (bx += j * 4, vx = sht->vx0 + bx; bx < bx1; bx++, vx++)
+                    if (pmap[vx] == sid)
+                        pvram[vx] = pbuf[bx];
+            }
+        }
+        else //  1字节
+        {
+            for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
+            {
+                pmap = &map[vy * ctl->xsize];
+                pvram = &vram[vy * ctl->xsize];
+                pbuf = &buf[by * sht->bxsize];
+                for (bx = bx0, vx = sht->vx0 + bx0; bx < bx1; bx++, vx++)
+                    if (pmap[vx] == sid)
+                        pvram[vx] = pbuf[bx];
             }
         }
     }
@@ -227,7 +275,7 @@ void sheet_refreshmap(struct SHTCTL *const ctl, int vx0, int vy0, int vx1, int v
     if (vx1 > ctl->xsize)
         vx1 = ctl->xsize;
     if (vy1 > ctl->ysize)
-        vy1 = ctl->ysize;
+        vy1 = ctl->ysize; // 绘制目标位置
 
     for (h = h0; h <= ctl->top; h++)
     {
@@ -246,20 +294,47 @@ void sheet_refreshmap(struct SHTCTL *const ctl, int vx0, int vy0, int vx1, int v
         if (bx1 > sht->bxsize)
             bx1 = sht->bxsize;
         if (by1 > sht->bysize)
-            by1 = sht->bysize;
+            by1 = sht->bysize; // 相对位置
 
-        for (by = by0; by < by1; by++)
+        if (sht->col_inv == -1) // 没有透明色
         {
-            vy = sht->vy0 + by;
-            for (bx = bx0; bx < bx1; bx++)
+            if ((sht->vx0 & 3) == 0 && (bx0 & 3) == 0 && (bx1 & 3) == 0) // 是4倍数
+            {                                                            // 启用4字节优化
+                bx1 = (bx1 - bx0) / 4;
+                int sid4 = sid | sid << 8 | sid << 16 | sid << 24;
+                int *p4;
+                for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
+                {
+                    p4 = (int *)&map[vy * ctl->xsize + sht->vx0 + bx0];
+                    for (bx = 0; bx < bx1; bx++)
+                        p4[bx] = sid4;
+                }
+            }
+            else // 无4字节优化、有透明优化
             {
-                vx = sht->vx0 + bx;
-                if (buf[by * sht->bxsize + bx] != sht->col_inv)
-                    map[vy * ctl->xsize + vx] = sid;
+                char *p;
+                for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
+                {
+                    p = &map[vy * ctl->xsize];
+                    for (bx = bx0, vx = sht->vx0 + bx0; bx < bx1; bx++, vx++)
+                        p[vx] = sid;
+                }
+            }
+        }
+        else // 有透明色，无优化
+        {
+            char *pbuf, *pmap;
+            for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
+            {
+
+                pbuf = &buf[by * sht->bxsize];
+                pmap = &map[vy * ctl->xsize];
+                for (bx = bx0, vx = sht->vx0 + bx0; bx < bx1; bx++, vx++)
+                    if (pbuf[bx] != sht->col_inv)
+                        pmap[vx] = sid;
             }
         }
     }
-    return;
     return;
 }
 
