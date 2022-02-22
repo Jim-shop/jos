@@ -14,10 +14,10 @@ struct SHTCTL *shtctl_init(struct MEMMAN *const memman, unsigned char *const vra
     if (ctl == 0)
         return ctl;
     ctl->map = (unsigned char *)memman_alloc_4k(memman, xsize * ysize);
-    if (ctl->map == 0)
+    if (ctl->map == NULL)
     {
         memman_free_4k(memman, (unsigned int)ctl, sizeof(struct SHTCTL));
-        return ctl; // ???
+        return ctl;
     }
     ctl->vram = vram;
     ctl->xsize = xsize;
@@ -267,6 +267,8 @@ void sheet_refreshmap(struct SHTCTL *const ctl, int vx0, int vy0, int vx1, int v
     struct SHEET *sht;
     unsigned char *buf;
     unsigned char sid;
+    int sid4, *p4;
+    char *pbuf, *pmap;
 
     if (vx0 < 0)
         vx0 = 0;
@@ -301,8 +303,7 @@ void sheet_refreshmap(struct SHTCTL *const ctl, int vx0, int vy0, int vx1, int v
             if ((sht->vx0 & 3) == 0 && (bx0 & 3) == 0 && (bx1 & 3) == 0) // 是4倍数
             {                                                            // 启用4字节优化
                 bx1 = (bx1 - bx0) / 4;
-                int sid4 = sid | sid << 8 | sid << 16 | sid << 24;
-                int *p4;
+                sid4 = sid | sid << 8 | sid << 16 | sid << 24;
                 for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
                 {
                     p4 = (int *)&map[vy * ctl->xsize + sht->vx0 + bx0];
@@ -312,18 +313,16 @@ void sheet_refreshmap(struct SHTCTL *const ctl, int vx0, int vy0, int vx1, int v
             }
             else // 无4字节优化、有透明优化
             {
-                char *p;
                 for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
                 {
-                    p = &map[vy * ctl->xsize];
+                    pmap = &map[vy * ctl->xsize];
                     for (bx = bx0, vx = sht->vx0 + bx0; bx < bx1; bx++, vx++)
-                        p[vx] = sid;
+                        pmap[vx] = sid;
                 }
             }
         }
         else // 有透明色，无优化
         {
-            char *pbuf, *pmap;
             for (by = by0, vy = sht->vy0 + by0; by < by1; by++, vy++)
             {
 

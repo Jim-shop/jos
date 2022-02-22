@@ -352,8 +352,8 @@ void Main(void)
 							if (act_win != NULL)
 								keywin_off(act_win);
 							act_win = open_console(shtctl, memtotal);
-							sheet_updown(act_win, shtctl->top);
 							sheet_slide(act_win, 64, 64);
+							sheet_updown(act_win, shtctl->top);
 							keywin_on(act_win);
 						}
 						break;
@@ -388,7 +388,7 @@ void Main(void)
 					{
 						if (mmx == MOUSE_DRAG_IDLE) // 如果未处于拖动模式
 						{
-							mmx = MOUSE_DRAG_IGNORE;			  // 忽略拖动信号
+							mmx = MOUSE_DRAG_IGNORE;
 							for (j = shtctl->top - 1; j > 0; j--) // 自上而下遍历在鼠标图层之下、背景图层之上的图层
 							{									  // （sheet_refreshmap因为被鼠标指针挡住了没法用，只能重新遍历）
 								sht = shtctl->sheets[j];
@@ -414,7 +414,7 @@ void Main(void)
 												task = sht->task;
 												cons_putstr0(task->cons, "\nMouse Interrupt.\n");
 												io_cli(); // 强制结束程序
-												task->tss.eax = (int)(&task->tss.esp0);
+												task->tss.eax = (int)&(task->tss.esp0);
 												task->tss.eip = (int)asm_end_app;
 												io_sti();
 											}
