@@ -16,7 +16,9 @@ RULEFILE    := $(TOOLPATH)jos.rul
 .PHONY: 
 	default clean
 
-default: $(APP)
+default: 
+	@cd ../apilib && make
+	@make $(APP)
 
 clean:
 	@cd ../apilib && make clean
@@ -24,9 +26,6 @@ clean:
 
 
 ###
-
-$(APILIB):
-	@cd ../apilib && make
 
 %.gas: %.c Makefile
 	@$(CC1) -o $*.gas $*.c
@@ -38,7 +37,7 @@ $(APILIB):
 	@$(NASK) $*.nas $*.obj
 
 %.bim: %.obj $(APILIB) Makefile
-	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj $(APILIB)
+	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim $*.obj $(APILIB)
 
 %.je: %.bim Makefile
 	@$(BIM2HRB) $*.bim $*.je 100k

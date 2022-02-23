@@ -14,6 +14,7 @@ struct BOOTINFO
 };
 extern struct BOOTINFO *const binfo;
 #define ADR_DISKIMG 0x00100000 // 磁盘内容被asmhead放在了此处
+#define ADR_DISKIMG_FILE 0x00103e00
 
 // naskfunc 提供的函数
 void io_hlt(void);
@@ -276,6 +277,15 @@ struct TASK
     struct SEGMENT_DESCRIPTOR ldt[2]; // LDT表
     struct CONSOLE *cons;             // 用于区分console
     int ds_base, cons_stack;          // 用于区分console
+    struct FILEHANDLE *fhandle;
+    short *fat;
+    char *cmdline;
+};
+struct FILEHANDLE
+{
+    char *buf;
+    int size;
+    int pos;
 };
 struct TASKLEVEL
 {
@@ -347,7 +357,6 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
 void cmd_mem(struct CONSOLE *const cons, unsigned int const memtotal);
 void cmd_cls(struct CONSOLE *const cons);
 void cmd_dir(struct CONSOLE *const cons);
-void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline);
 void cmd_exit(struct CONSOLE const *const cons, short const *const fat);
 void cmd_start(struct CONSOLE *const cons, char const *cmdline, const int memtotal);
 void cmd_ncst(struct CONSOLE *const cons, char const *cmdline, const int memtotal);

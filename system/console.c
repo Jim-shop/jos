@@ -14,8 +14,19 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     控制台进程。
     */
 
+    int i;
+
+    // 暂存指令
+    char cmdline[30];
+
     // 自身task
     struct TASK *task = task_now();
+
+    struct FILEHANDLE fhandle[8];
+
+    // fat表 0柱面0磁头2~9扇区第一份10~18第二份（两份完全相同）
+    unsigned short *const fat = (unsigned short *const)memman_alloc_4k(memman, 2 * 2880); // 共2880扇区
+    file_readfat(fat, (unsigned char *)(ADR_DISKIMG + 0x000200));
 
     // 状态信息
     struct CONSOLE cons;
@@ -24,6 +35,11 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     cons.cur_y = 28;
     cons.cur_c = -1;
     task->cons = &cons;
+    task->cmdline = cmdline;
+    for (i = 0; i < 8; i++)
+        fhandle[i].buf = NULL;
+    task->fhandle = fhandle;
+    task->fat = fat;
 
     if (cons.sht != NULL) // cons.sht在命令行窗口关闭后会被置为0
     {
@@ -32,17 +48,9 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
         timer_settime(cons.timer, 50);
     }
 
-    // 暂存指令
-    char cmdline[30];
-
-    // fat表 0柱面0磁头2~9扇区第一份10~18第二份（两份完全相同）
-    unsigned short *const fat = (unsigned short *const)memman_alloc_4k(memman, 2 * 2880); // 共2880扇区
-    file_readfat(fat, (unsigned char *)(ADR_DISKIMG + 0x000200));
-
     // 提示符
     cons_putchar(&cons, '>', 1);
 
-    int i;
     for (;;)
     {
         io_cli();
@@ -227,8 +235,6 @@ void cons_runcmd(char const *const cmdline, struct CONSOLE *const cons, unsigned
         cmd_cls(cons);
     else if (strcmp(cmdline, "dir") == 0 && cons->sht != NULL)
         cmd_dir(cons);
-    else if (strncmp(cmdline, "type ", 5) == 0 && cons->sht != NULL)
-        cmd_type(cons, fat, cmdline);
     else if (strcmp(cmdline, "exit") == 0)
         cmd_exit(cons, fat);
     else if (strncmp(cmdline, "start ", 6) == 0)
@@ -254,7 +260,7 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
     {
         if (cmdline[i] <= ' ')
             break;
-        name[i] = cmdline[i];
+        name[i] = cmdline[i];// 得到空格之前的文件名
     }
     name[i] = 0;
     struct FILEINFO *f = file_search(name, finfo, 224);
@@ -277,7 +283,7 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
         2003*8~3002*8: 应用程序数据段
         */
         char *const p = (char *)memman_alloc_4k(memman, f->size); // 应用程序代码段
-        file_loadfile(f->clustno, f->size, p, fat, (char *)(ADR_DISKIMG + 0x3e00));
+        file_loadfile(f->clustno, f->size, p, fat, (char *)ADR_DISKIMG_FILE);
         /*
             .hrb文件格式
         0x0000 (DWORD)      请求操作系统为应用程序准备的数据段大小
@@ -311,6 +317,12 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
                 if ((sht->flags & 0x11) == 0x11 && sht->task == task) // 有应用程序运行0x10且SHT_FLAGS_USING
                     sheet_free(sht);                                  // 释放被应用程序遗留的窗口
             }
+            for (i = 0; i < 8; i++)
+                if (task->fhandle[i].buf != NULL)
+                {
+                    memman_free_4k(memman, (int)task->fhandle[i].buf, task->fhandle[i].size);
+                    task->fhandle[i].buf = NULL;
+                }
             timer_cancelall(&task->fifo); // 取消以此fifo为缓冲区的所有具有自动取消属性的timer
             memman_free_4k(memman, (unsigned int)q, seg_size);
         }
@@ -377,27 +389,6 @@ void cmd_dir(struct CONSOLE *const cons)
             }
         }
     }
-    cons_newline(cons);
-    return;
-}
-
-void cmd_type(struct CONSOLE *const cons, unsigned short const *const fat, char const *const cmdline)
-{
-    /*
-    给控制台提供type命令。
-    指令功能：根据type命令后跟的文件名（不区分大小写）找到对应的文件并显示内容。
-    */
-
-    struct FILEINFO const *const f = file_search(cmdline + 5, finfo, 224);
-    if (f != NULL) // 找到了
-    {
-        char *const p = (char *)memman_alloc_4k(memman, f->size);
-        file_loadfile(f->clustno, f->size, p, fat, (unsigned char *)(ADR_DISKIMG + 0x003e00));
-        cons_putstr1(cons, p, f->size);
-        memman_free_4k(memman, (unsigned int)p, f->size);
-    }
-    else // 没找到
-        cons_putstr0(cons, "File not found.\n");
     cons_newline(cons);
     return;
 }
@@ -485,11 +476,19 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     18. 定时器时间设定set（EBX=定时器句柄，EAX=时间）
     19. 释放定时器free（EBX=定时器句柄）
     20. 蜂鸣器发声（EAX=声音频率mHz,0表示停止发声）
+    21. 打开文件（EBX=文件名）->EAX=文件句柄，为0打开失败
+    22. 关闭文件（EAX=文件句柄）
+    23. 文件定位（EAX=文件句柄，ECX=定位起点{0:文件开头; 1:当前位置; 2: 文件末尾}，EBX=偏移量）
+    24. 获取文件大小（EAX=文件句柄，ECX=获取模式{0:总大小; 1:开头到当前; 2:结尾到当前}）->EAX=文件大小
+    25. 文件读取（EAX=文件句柄，EBX=缓冲区地址，ECX=最大读取字节数）->EAX=读取到的字节数
+    26. 获取命令行（EBX=储存地址，ECX=获取的字节数）->EAX=实际存放的字节数
     */
     struct TASK *task = task_now();
     int ds_base = task->ds_base;
     struct CONSOLE *const cons = task->cons;
     struct SHTCTL *const shtctl = (struct SHTCTL *const)*((int *)0x0fe4);
+    struct FILEINFO *f;
+    struct FILEHANDLE *fh;
     struct FIFO32 *const sys_fifo = (struct FIFO32 *)*((int *)0x0fec);
     int *reg = &eax + 1; // eax的后一个位置，即第一次PUSHAD储存的位置。修改它达到返回值效果
     /*
@@ -673,6 +672,97 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
             io_out8(0x42, i >> 8);
             io_out8(0x61, (io_in8(0x61) | 0x03) & 0x0f);
         }
+        break;
+
+    case 21:
+        for (i = 0; i < 8; i++)
+            if (task->fhandle[i].buf == NULL)
+                break;
+        fh = &task->fhandle[i];
+        reg[7] = 0;
+        if (i < 8) // 找到空闲的文件句柄
+        {
+            f = file_search((char *)ebx + ds_base, finfo, 224);
+            if (f != NULL)
+            {
+                reg[7] = (int)fh;
+                fh->buf = (char *)memman_alloc_4k(memman, f->size);
+                fh->size = f->size;
+                fh->pos = 0;
+                file_loadfile(f->clustno, f->size, fh->buf, task->fat, (unsigned char *)ADR_DISKIMG_FILE);
+            }
+        }
+        break;
+
+    case 22:
+        fh = (struct FILEHANDLE *)eax;
+        memman_free_4k(memman, (int)fh->buf, fh->size);
+        fh->buf = NULL;
+        break;
+
+    case 23:
+        fh = (struct FILEHANDLE *)eax;
+        switch (ecx)
+        {
+        case 0:
+            fh->pos = ebx;
+            break;
+
+        case 1:
+            fh->pos += ebx;
+            break;
+
+        case 2:
+            fh->pos = fh->size + ebx;
+            break;
+        }
+        if (fh->pos < 0)
+            fh->pos = 0;
+        if (fh->pos > fh->size)
+            fh->pos = fh->size;
+        break;
+
+    case 24:
+        fh = (struct FILEHANDLE *)eax;
+        switch (ecx)
+        {
+        case 0:
+            reg[7] = fh->size;
+            break;
+
+        case 1:
+            reg[7] = fh->pos;
+            break;
+
+        case 2:
+            reg[7] = fh->pos - fh->size;
+            break;
+        }
+        break;
+
+    case 25:
+        fh = (struct FILEHANDLE *)eax;
+        for (i = 0; i < ecx; i++)
+        {
+            if (fh->pos == fh->size)
+                break;
+            *((char *)ebx + ds_base + i) = fh->buf[fh->pos];
+            fh->pos++;
+        }
+        reg[7] = i;
+        break;
+
+    case 26:
+        for (i = 0;; i++)
+        {
+            *((char *)ebx + ds_base + i) = task->cmdline[i];
+            if (task->cmdline[i] == '\0')
+                break;
+            if (i >= ecx)
+                break;
+        }
+        reg[7] = i;
+        break;
     }
     return 0; // 正常返回
 }

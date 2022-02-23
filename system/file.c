@@ -35,7 +35,7 @@ void file_loadfile(unsigned int clustno, unsigned int size, char *buf, unsigned 
     size: 文件大小
     buf: 读入缓存区域
     fat: fat表
-    img: 文件储存区(0x003e00)处位置。
+    img: 文件储存区ADR_DISKIMG_FILE(0x003e00)处位置。
     */
     int i;
     for (;;)

@@ -1,4 +1,4 @@
-API := $(subst .nas,.obj,$(wildcard *.nas))
+API 		:= $(subst .nas,.obj,$(wildcard *.nas))
 
 TOOLPATH 	:= ../build_tools/
 NASK		:= $(TOOLPATH)nask.exe

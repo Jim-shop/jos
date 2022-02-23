@@ -38,3 +38,15 @@ void api_settimer(int timer, int time);
 void api_freetimer(int timer);
 // 20. 蜂鸣器发声（声音频率mHz,0表示停止发声）
 void api_beep(int tone);
+// 21. 打开文件（文件名）->文件句柄
+int api_fopen(char *fname);
+// 22. 关闭文件（文件句柄）
+void api_fclose(int fhandle);
+// 23. 文件定位（文件句柄，定位起点{0:文件开头; 1:当前位置; 2: 文件末尾}，偏移量）
+void api_fseek(int fhandle, int offset, int mode);
+// 24. 获取文件大小（文件句柄，获取模式{0:总大小; 1:开头到当前; 2:结尾到当前}）->文件大小
+int api_fsize(int fhandle, int mode);
+// 25. 文件读取（文件句柄，缓冲区地址，最大读取字节数）->读取到的字节数
+int api_fread(char *buf, int maxsize, int fhandle);
+// 26. 获取命令行（储存地址，获取的字节数）->实际存放的字节数
+int api_getcmdline(char *buf, int maxsize);

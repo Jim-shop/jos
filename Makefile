@@ -37,9 +37,10 @@ run: img
 
 ### 
 
-$(IMG): Makefile 
+$(IMG): $(APP) $(SYS) $(IPL) Makefile 
 	@$(EDIMG) imgin:$(TOOLPATH)fdimg0at.tek \
 		wbinimg src:$(IPL) len:512 from:0 to:0 \
 		copy from:$(SYS) to:@: \
+		copy from:Makefile to:@: \
 		$(patsubst %.je,copy from:%.je to:@:,$(APP)) \
 		imgout:$(IMG)
