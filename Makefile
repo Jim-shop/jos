@@ -67,8 +67,9 @@ jos.sys: asmhead.bin bootpack.je Makefile
 
 ### ”¶”√
 
-%.bim: %.obj api.obj Makefile
-	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj api.obj
+API := api001.obj api002.obj api003.obj api004.obj api005.obj api006.obj api007.obj api008.obj api009.obj api010.obj api011.obj api012.obj api013.obj api014.obj api015.obj api016.obj api017.obj api018.obj api019.obj api020.obj
+%.bim: %.obj $(API) Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj $(API)
 %.je: %.bim Makefile
 	@$(BIM2HRB) $*.bim $*.je 100k
 

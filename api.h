@@ -1,7 +1,9 @@
 // 1. 显示单个字符
-void api_putchar(int c); 
+void api_putchar(int c);
 // 2. 显示以'\0'结尾字符串
 void api_putstr0(char *s);
+// 3. 显示某长度字符串
+void api_putstr1(char *s, int l);
 // 4. 结束应用程序
 void api_end(void);
 // 5. 显示窗口（窗口缓冲区，窗口x大小，窗口y大小，透明色，窗口名称）->窗口句柄
