@@ -12,6 +12,7 @@ OBJ2BIM		:= $(TOOLPATH)obj2bim.exe
 MAKEFONT	:= $(TOOLPATH)makefont.exe
 BIN2OBJ		:= $(TOOLPATH)bin2obj.exe
 BIM2HRB		:= $(TOOLPATH)bim2hrb.exe
+GOLIB		:= $(TOOLPATH)golib00.exe
 RULEFILE    := $(TOOLKIT)/jos.rul
 EDIMG    	:= $(TOOLPATH)edimg.exe
 IMGTOL      := $(TOOLPATH)imgtol.com
@@ -67,9 +68,14 @@ jos.sys: asmhead.bin bootpack.je Makefile
 
 ### 应用
 
+# api库制作
 API := api001.obj api002.obj api003.obj api004.obj api005.obj api006.obj api007.obj api008.obj api009.obj api010.obj api011.obj api012.obj api013.obj api014.obj api015.obj api016.obj api017.obj api018.obj api019.obj api020.obj
-%.bim: %.obj $(API) Makefile
-	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj $(API)
+apilib.lib: $(API) Makefile
+	$(GOLIB) $(API) out:apilib.lib
+
+# 程序编译
+%.bim: %.obj apilib.lib Makefile
+	@$(OBJ2BIM) @$(RULEFILE) out:$*.bim stack:1k $*.obj apilib.lib
 %.je: %.bim Makefile
 	@$(BIM2HRB) $*.bim $*.je 100k
 
@@ -88,7 +94,7 @@ $(IMG): ipl.bin jos.sys Makefile $(JE)
 ####### 指令
 
 clean:
-	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys *.je
+	-@del *.bin *.lst *.gas *.map *.bim *.hrb *.obj *.sys *.je *.lib
 
 clean_all: clean
 	-@del *.img *.vfd

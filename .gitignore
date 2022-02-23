@@ -10,4 +10,5 @@
 *.img 
 *.sys
 *.je
+*.lib
 /bootpack.nas
