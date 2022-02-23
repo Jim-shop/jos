@@ -1,6 +1,0 @@
-void Main(void)
-{
-    for (;;)
-    {
-    }
-}
