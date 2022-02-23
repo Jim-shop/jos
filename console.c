@@ -23,13 +23,14 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
     cons.cur_x = 8;
     cons.cur_y = 28;
     cons.cur_c = -1;
-    if (sheet != NULL)
+    task->cons = &cons;
+
+    if (cons.sht != NULL) // cons.sht在命令行窗口关闭后会被置为0
     {
         cons.timer = timer_alloc();
         timer_init(cons.timer, &task->fifo, 1);
         timer_settime(cons.timer, 50);
     }
-    task->cons = &cons;
 
     // 暂存指令
     char cmdline[30];
@@ -57,6 +58,8 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
             switch (i)
             {
             case 0 ... 1: // 光标闪烁
+                if (cons.sht == NULL)
+                    break;
                 if (i != 0)
                 {
                     timer_init(cons.timer, &task->fifo, 0);
@@ -77,7 +80,8 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
                 break;
 
             case 3: // 光标OFF
-                boxfill8(sheet->buf, sheet->bxsize, black, cons.cur_x, cons.cur_y, cons.cur_x + 7, cons.cur_y + 15);
+                if (cons.sht != NULL)
+                    boxfill8(cons.sht->buf, cons.sht->bxsize, black, cons.cur_x, cons.cur_y, cons.cur_x + 7, cons.cur_y + 15);
                 cons.cur_c = -1;
                 break;
 
@@ -101,7 +105,7 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
                     cmdline[cons.cur_x / 8 - 2] = 0; // 字串结束标志
                     cons_newline(&cons);
                     cons_runcmd(cmdline, &cons, fat, memtotal);
-                    if (sheet == NULL)
+                    if (cons.sht == NULL)
                         cmd_exit(&cons, fat);
                     cons_putchar(&cons, '>', 1); // 显示提示符
                     break;
@@ -117,9 +121,10 @@ void console_task(struct SHEET *const sheet, unsigned int const memtotal)
                 break;
             }
             // 光标
-            if (cons.cur_c >= 0)
-                boxfill8(sheet->buf, sheet->bxsize, cons.cur_c, cons.cur_x, cons.cur_y, cons.cur_x + 7, cons.cur_y + 15);
-            sheet_refresh(sheet, cons.cur_x, cons.cur_y, cons.cur_x + 8, cons.cur_y + 16);
+            if (cons.sht != NULL)
+                if (cons.cur_c >= 0)
+                    boxfill8(cons.sht->buf, cons.sht->bxsize, cons.cur_c, cons.cur_x, cons.cur_y, cons.cur_x + 7, cons.cur_y + 15);
+            sheet_refresh(cons.sht, cons.cur_x, cons.cur_y, cons.cur_x + 8, cons.cur_y + 16);
         }
     }
 }
@@ -291,13 +296,13 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
             int esp = *((int *)(p + 0x000c));
             int data_size = *((int *)(p + 0x0010));
             int data_je = *((int *)(p + 0x0014));
-            char *q = (char *)memman_alloc_4k(memman, seg_size);                                 // 应用程序数据段
-            task->ds_base = (int)q;                                                              // 传递段号给API
-            set_segmdesc(gdt + 1000 + task->sel / 8, f->size - 1, (int)p, AR_CODE32_ER + 0x60);  // 应用程序权限
-            set_segmdesc(gdt + 2000 + task->sel / 8, seg_size - 1, (int)q, AR_DATA32_RW + 0x60); // 应用程序权限
+            char *q = (char *)memman_alloc_4k(memman, seg_size);                    // 应用程序数据段
+            task->ds_base = (int)q;                                                 // 传递段号给API
+            set_segmdesc(task->ldt + 0, f->size - 1, (int)p, AR_CODE32_ER + 0x60);  // 应用程序权限
+            set_segmdesc(task->ldt + 1, seg_size - 1, (int)q, AR_DATA32_RW + 0x60); // 应用程序权限
             for (i = 0; i < data_size; i++)
                 q[esp + i] = p[data_je + i];
-            start_app(0x1b, 1000 * 8 + task->sel, esp, 2000 * 8 + task->sel, &(task->tss.esp0)); // 从主函数开始执行
+            start_app(0x1b, 0 * 8 + 4, esp, 1 * 8 + 4, &(task->tss.esp0)); // 从主函数开始执行，采用LDT段表
             struct SHTCTL *shtctl = (struct SHTCTL *)*((int *)0x0fe4);
             struct SHEET *sht;
             for (i = 0; i < MAX_SHEETS; i++)
@@ -485,6 +490,7 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     int ds_base = task->ds_base;
     struct CONSOLE *const cons = task->cons;
     struct SHTCTL *const shtctl = (struct SHTCTL *const)*((int *)0x0fe4);
+    struct FIFO32 *const sys_fifo = (struct FIFO32 *)*((int *)0x0fec);
     int *reg = &eax + 1; // eax的后一个位置，即第一次PUSHAD储存的位置。修改它达到返回值效果
     /*
     reg[0] : EDI,   reg[1] : ESI,   reg[2] : EBP,   reg[3] : ESP
@@ -606,6 +612,14 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
 
             case 3: // 光标OFF
                 cons->cur_c = -1;
+                break;
+
+            case 4: // 只关闭命令行窗口
+                timer_cancel(cons->timer);
+                io_cli();
+                fifo32_put(sys_fifo, cons->sht - shtctl->sheets0 + 2024); // 2024~2279
+                cons->sht = 0;
+                io_sti();
                 break;
 
             default:          // taskA传过来的键盘数据、应用程序自行设置的定时器数据

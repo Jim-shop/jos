@@ -121,7 +121,7 @@ void Main(void)
 	// 各种用途的临时变量
 	int i, j, x, y;
 	char s[40];
-	struct SHEET *sht = NULL;
+	struct SHEET *sht = NULL, *sht2;
 	struct TASK *task;
 
 	// 初始化中断
@@ -354,6 +354,7 @@ void Main(void)
 								task->tss.eax = (int)&(task->tss.esp0);
 								task->tss.eip = (int)asm_end_app; // 强制终止任务
 								io_sti();
+								task_run(task, -1, 0); // 如果处于休眠状态则唤醒执行结束处理
 							}
 						}
 						break;
@@ -428,10 +429,15 @@ void Main(void)
 												task->tss.eax = (int)&(task->tss.esp0);
 												task->tss.eip = (int)asm_end_app;
 												io_sti();
+												task_run(task, -1, 0); // 如果处于休眠状态则唤醒执行结束处理
 											}
 											else // 系统窗口
 											{
 												task = sht->task;
+												sheet_updown(sht, -1); // 暂且隐藏
+												keywin_off(act_win);
+												act_win = shtctl->sheets[shtctl->top - 1];
+												keywin_on(act_win);
 												io_cli();
 												fifo32_put(&task->fifo, 4); // 发送退出信号
 												io_sti();
@@ -480,6 +486,12 @@ void Main(void)
 
 			case 1024 ... 2023: // 无窗口的控制台关闭
 				close_constask(taskctl->tasks0 + (i - 1024));
+				break;
+
+			case 2024 ... 2279: // 只关闭命令行窗口
+				sht2 = shtctl->sheets0 + (i - 2024);
+				memman_free_4k(memman, (int)sht2->buf, 256 * 165);
+				sheet_free(sht2);
 				break;
 			}
 		}

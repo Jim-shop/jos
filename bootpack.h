@@ -85,6 +85,7 @@ void putblock8_8(unsigned char *const vram, const int vxsize, const int pxsize, 
 #define LIMIT_BOTPAK 0x0007ffff
 #define AR_DATA32_RW 0x4092
 #define AR_CODE32_ER 0x409a
+#define AR_LDT 0x0082       // LDT表
 #define AR_TSS32 0x0089     // TSS32的访问权限
 #define AR_INTGATE32 0x008e // IDT属性，表示用于中断处理的有效设定
 struct SEGMENT_DESCRIPTOR
@@ -263,7 +264,8 @@ struct TSS32
     int backlink, esp0, ss0, esp1, ss1, esp2, ss2, cr3;      // 任务设置相关信息
     int eip, eflags, eax, ecx, edx, ebx, esp, ebp, esi, edi; // 保存32位寄存器状态
     int es, cs, ss, ds, fs, gs;                              // 保存16位寄存器的状态
-    int ldtr, iomap;                                         // ldtr=0, iomap=0x40000000
+    int ldtr;                                                // LDT表段号
+    int iomap;                                               // iomap=0x40000000
 };
 struct TASK
 {
@@ -271,8 +273,9 @@ struct TASK
     int level, priority; // 优先级、每片时长
     struct FIFO32 fifo;
     struct TSS32 tss;
-    struct CONSOLE *cons;    // 用于区分console
-    int ds_base, cons_stack; // 用于区分console
+    struct SEGMENT_DESCRIPTOR ldt[2]; // LDT表
+    struct CONSOLE *cons;             // 用于区分console
+    int ds_base, cons_stack;          // 用于区分console
 };
 struct TASKLEVEL
 {
