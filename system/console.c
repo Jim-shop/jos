@@ -260,7 +260,7 @@ int cmd_app(struct CONSOLE *const cons, unsigned short const *const fat, char co
     {
         if (cmdline[i] <= ' ')
             break;
-        name[i] = cmdline[i];// 得到空格之前的文件名
+        name[i] = cmdline[i]; // 得到空格之前的文件名
     }
     name[i] = 0;
     struct FILEINFO *f = file_search(name, finfo, 224);
@@ -572,8 +572,22 @@ int *je_api(int edi, int esi, int ebp, int esp, int ebx, int edx, int ecx, int e
     case 13:
         sht = (struct SHEET *)(ebx & 0xfffffffe); // 忽略EBX最低bit
         je_api_linewin(sht, eax, ecx, esi, edi, ebp);
-        if ((ebx & 1) == 0)                                 // EBX最低bit为0则刷新窗口
+        if ((ebx & 1) == 0) // EBX最低bit为0则刷新窗口
+        {
+            if (eax > esi)
+            {
+                i = eax;
+                eax = esi;
+                esi = i;
+            }
+            if (ecx > edi)
+            {
+                i = ecx;
+                ecx = edi;
+                edi = i;
+            }
             sheet_refresh(sht, eax, ecx, esi + 1, edi + 1); // 超尾
+        }
         break;
 
     case 14:
